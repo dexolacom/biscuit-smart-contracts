@@ -10,11 +10,15 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 import {Portfolio} from "./Portfolio.sol";
 
+import "hardhat/console.sol";
 
 error NotContract(address account);
+error SecondAgoUnchanged(uint32 value);
 error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
+error PoolDoesNotExist();
 error IncorrectTotalShares(uint256 totalShares);
+error OwnerDoesNotOwnToken(address owner, uint256 tokenId);
 error AmountZero();
 
 contract PortfolioMarket is AccessControl {
@@ -65,7 +69,7 @@ contract PortfolioMarket is AccessControl {
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if(secondsAgo == _newSecondsAgo) revert("New value must be different from the current value");
+        if (secondsAgo == _newSecondsAgo) revert SecondAgoUnchanged(_newSecondsAgo);
         secondsAgo = _newSecondsAgo;
         emit SecondsAgoUpdated(_newSecondsAgo);
     }
@@ -113,6 +117,8 @@ contract PortfolioMarket is AccessControl {
     }
 
     function sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) public {
+        if (portfolioNFT.ownerOf(_tokenId) != msg.sender) revert OwnerDoesNotOwnToken(msg.sender, _tokenId);
+        console.log(portfolioNFT.ownerOf(_tokenId));
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
@@ -127,7 +133,7 @@ contract PortfolioMarket is AccessControl {
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         address pool = UNISWAP_FACTORY.getPool(address(TOKEN), _token, fee);
-        if (pool == address(0)) revert();
+        if (pool == address(0)) revert PoolDoesNotExist();
 
         (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
         uint256 amountOut = OracleLibrary.getQuoteAtTick(tick, uint128(_amountIn), address(TOKEN), _token);
@@ -158,7 +164,7 @@ contract PortfolioMarket is AccessControl {
         for (uint256 i = 0; i < portfolio.length; i++) {
             PortfolioToken memory portfolioToken = portfolio[i];
             uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
-            uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioToken.token, _amount, _fee);
+            // uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioToken.token, _amount, _fee);
 
             IV3SwapRouter.ExactInputSingleParams memory params =
                 IV3SwapRouter.ExactInputSingleParams({
@@ -167,7 +173,7 @@ contract PortfolioMarket is AccessControl {
                     fee: _fee,
                     recipient: address(this),
                     amountIn: tokenAmount,
-                    amountOutMinimum: amountOutMinimum,
+                    amountOutMinimum: 0,
                     sqrtPriceLimitX96: 0
                 });
 
