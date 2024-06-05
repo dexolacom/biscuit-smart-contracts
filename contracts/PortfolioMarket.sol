@@ -60,6 +60,18 @@ contract PortfolioMarket is AccessControl {
         _addPortfolio(_portfolio);
     }
 
+    function removePortfolios(uint256[] memory _portfolioIds) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < _portfolioIds.length; i++) {
+            removePortfolio(_portfolioIds[i]);
+        }
+    }
+
+    function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_portfolioId > portfolioId) revert("Portfolio does not exist");
+
+        delete portfolios[_portfolioId];
+    }
+
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
         if (_portfolioId > portfolioId) revert("Portfolio does not exist"); 
         if (_amount == 0 ) revert("Amount should be greater than zero");
