@@ -61,7 +61,7 @@ contract PortfolioMarket is AccessControl {
         for (uint256 i = 0; i < _portfolio.length; i++) {
             PortfolioToken memory portfolioToken = _portfolio[i];
 
-            if (!tokenExistsOnUniswap(portfolioToken.token)) {
+            if (!tokenExists(portfolioToken.token)) {
                 revert TokenDoesNotExist(portfolioToken.token);
             }
 
@@ -82,14 +82,14 @@ contract PortfolioMarket is AccessControl {
     }
 
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_portfolioId > portfolioId) revert PortfolioDoesNotExist(_portfolioId);
+        if (!portfolioExists(_portfolioId)) revert PortfolioDoesNotExist(_portfolioId);
 
         delete portfolios[_portfolioId];
         emit PortfolioRemoved(_portfolioId);
     }
 
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
-        if (_portfolioId > portfolioId) revert PortfolioDoesNotExist(_portfolioId); 
+        if (!portfolioExists(_portfolioId)) revert PortfolioDoesNotExist(_portfolioId); 
         if (_amount == 0 ) revert AmountZero();
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
@@ -99,9 +99,13 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioBought(_portfolioId, msg.sender, _amount);
     }
 
-    function tokenExistsOnUniswap(address _token) public view returns (bool) {
+    function tokenExists(address _token) public view returns (bool) {
         address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE); // need to fix later (DEFAULT_FEE)
         return pair != address(0);
+    }
+
+    function portfolioExists(uint256 _portfolioId) public view returns (bool) {
+        return portfolios[_portfolioId].length > 0;
     }
 
     function _addPortfolio(PortfolioToken[] memory _portfolio) private {
