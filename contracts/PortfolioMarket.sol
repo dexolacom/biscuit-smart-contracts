@@ -185,7 +185,7 @@ contract PortfolioMarket is AccessControl {
 
 
     function _checkPortfolioExistence(uint256 _portfolioId) private view {
-        if (portfolios[_portfolioId].length > 0) {
+        if (portfolios[_portfolioId].length == 0) {
             revert PortfolioDoesNotExist(_portfolioId);
         }
     }
