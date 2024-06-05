@@ -28,8 +28,8 @@ contract PortfolioMarket is AccessControl {
     mapping(uint256 => TokenShare[]) public portfolios;
     uint256 public portfolioCount;
 
-    constructor(address _admin, address _token, address _swapRouter, address _uniswapFactory)  {
-        grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
 
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
@@ -51,8 +51,7 @@ contract PortfolioMarket is AccessControl {
             revert("Total shares sum must be 100%");
         } 
 
-        portfolios[portfolioCount] = _portfolio;
-        portfolioCount++;
+        _addPortfolio(_portfolio);
     }
 
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint24 _fee) public {
@@ -85,5 +84,15 @@ contract PortfolioMarket is AccessControl {
     function tokenExistsOnUniswap(address _token) public view returns (bool) {
         address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE); // need to fix later (DEFAULT_FEE)
         return pair != address(0);
+    }
+
+    function _addPortfolio(TokenShare[] memory _portfolio) private {
+        TokenShare[] storage newPortfolio = portfolios[portfolioCount];
+
+        for (uint256 i = 0; i < _portfolio.length; i++) {
+            newPortfolio.push(_portfolio[i]);
+        }
+    
+        portfolioCount++;
     }
 }
