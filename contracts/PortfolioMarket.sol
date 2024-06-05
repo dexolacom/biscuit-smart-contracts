@@ -18,6 +18,7 @@ error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
 error PoolDoesNotExist();
 error PortfolioNFTNotSet();
+error PortfolioNFTAlreadySet();
 error IncorrectTotalShares(uint256 totalShares);
 error SenderDoesNotOwnToken(address owner, uint256 tokenId);
 error AmountZero();
@@ -52,6 +53,7 @@ contract PortfolioMarket is AccessControl {
     event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
     event SecondsAgoUpdated(uint32 newSecondsAgo);
+    event PortfolioNFTContractSet(address indexed portfolioNFT);
 
     modifier withSetupPortfolioNFT() {
         if (address(portfolioNFT) == address(0)) revert PortfolioNFTNotSet();
@@ -70,8 +72,10 @@ contract PortfolioMarket is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function setPortfolioContract(address _porfolio) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        portfolioNFT = Portfolio(_porfolio);
+    function setPortfolioNFTContract(address _porfolioNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (address(portfolioNFT) != address(0)) revert PortfolioNFTAlreadySet();
+        portfolioNFT = Portfolio(_porfolioNFT);
+        emit PortfolioNFTContractSet(_porfolioNFT);
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
