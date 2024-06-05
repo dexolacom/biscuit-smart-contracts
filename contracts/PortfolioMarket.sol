@@ -112,6 +112,13 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioBought(_portfolioId, msg.sender, _amount);
     }
 
+    function sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) public {
+        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
+        uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
+
+        _sellPortfolio(_tokenId, transactionTimeout, fee);
+    }
+
     function getExpectedMinAmountToken(
         address _token,
         uint256 _amountIn,
@@ -146,6 +153,8 @@ contract PortfolioMarket is AccessControl {
         TOKEN.approve(address(SWAP_ROUTER), _amount);
 
         PortfolioToken[] memory portfolio = portfolios[_portfolioId];
+        Portfolio.PortfolioAsset[] memory newPortfolio = new Portfolio.PortfolioAsset[](portfolio.length);
+
         for (uint256 i = 0; i < portfolio.length; i++) {
             PortfolioToken memory portfolioToken = portfolio[i];
             uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
@@ -163,7 +172,40 @@ contract PortfolioMarket is AccessControl {
                 });
 
             SWAP_ROUTER.exactInputSingle(params);
+
+            newPortfolio[i] = Portfolio.PortfolioAsset({
+                token: portfolioToken.token,
+                amount: tokenAmount
+            });
         }
+
+        portfolioNFT.mint(msg.sender, newPortfolio);
+    }
+
+    function _sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) private {
+        Portfolio.PortfolioAsset[] memory portfolio = portfolioNFT.getPortfolio(_tokenId);
+
+        for (uint256 i = 0; i < portfolio.length; i++) {
+            Portfolio.PortfolioAsset memory portfolioAsset = portfolio[i];
+            IERC20(portfolioAsset.token).approve(address(SWAP_ROUTER), portfolioAsset.amount);
+
+            IV3SwapRouter.ExactInputSingleParams memory params =
+                IV3SwapRouter.ExactInputSingleParams({
+                    tokenIn: portfolioAsset.token,
+                    tokenOut: address(TOKEN),
+                    fee: _fee,
+                    recipient: msg.sender,
+                    amountIn: portfolioAsset.amount,
+                    amountOutMinimum: 0,
+                    sqrtPriceLimitX96: 0
+                });
+
+            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+
+            TOKEN.safeTransfer(msg.sender, amountOut);
+        }
+
+        portfolioNFT.burn(_tokenId);
     }
 
     function _checkIsContract(address _address) private view {
@@ -189,7 +231,6 @@ contract PortfolioMarket is AccessControl {
             revert IncorrectTotalShares(totalShares);
         }
     }
-
 
     function _checkPortfolioExistence(uint256 _portfolioId) private view {
         if (portfolios[_portfolioId].length == 0) {
