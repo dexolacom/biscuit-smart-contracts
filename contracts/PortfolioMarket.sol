@@ -9,6 +9,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 
+error NotContract(address account);
+error TokenDoesNotExist(address token);
+error PortfolioDoesNotExist(uint256 portfolioId);
+error IncorrectTotalShares(uint256 totalShares);
+error AmountZero();
+
 contract PortfolioMarket is AccessControl {
     using SafeERC20 for IERC20;
 
@@ -29,9 +35,9 @@ contract PortfolioMarket is AccessControl {
     uint256 public portfolioId;
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
-        _checkIsContract(_uniswapFactory, "Uniswap Factory is not a contract");
-        _checkIsContract(_swapRouter, "Swap Router is not a contract");
-        _checkIsContract(_token, "Token is not a contract");
+        _checkIsContract(_uniswapFactory);
+        _checkIsContract(_swapRouter);
+        _checkIsContract(_token);
 
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
@@ -49,16 +55,16 @@ contract PortfolioMarket is AccessControl {
     function addPortfolio(PortfolioToken[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 totalShares;
         for (uint256 i = 0; i < _portfolio.length; i++) {
-            PortfolioToken memory tokenShare = _portfolio[i];
+            PortfolioToken memory portfolioToken = _portfolio[i];
 
-            if (!tokenExistsOnUniswap(tokenShare.token)) {
-                revert("Token doesn't exist");
+            if (!tokenExistsOnUniswap(portfolioToken.token)) {
+                revert TokenDoesNotExist(portfolioToken.token);
             }
 
-            totalShares += tokenShare.share;
+            totalShares += portfolioToken.share;
         }
         if (totalShares != BIPS) {
-            revert("Total shares sum must be 100%");
+            revert IncorrectTotalShares(totalShares);
         } 
 
         _addPortfolio(_portfolio);
@@ -71,14 +77,14 @@ contract PortfolioMarket is AccessControl {
     }
 
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_portfolioId > portfolioId) revert("Portfolio does not exist");
+        if (_portfolioId > portfolioId) revert PortfolioDoesNotExist(_portfolioId);
 
         delete portfolios[_portfolioId];
     }
 
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
-        if (_portfolioId > portfolioId) revert("Portfolio does not exist"); 
-        if (_amount == 0 ) revert("Amount should be greater than zero");
+        if (_portfolioId > portfolioId) revert PortfolioDoesNotExist(_portfolioId); 
+        if (_amount == 0 ) revert AmountZero();
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
@@ -122,9 +128,9 @@ contract PortfolioMarket is AccessControl {
         }
     }
 
-    function _checkIsContract(address _address, string memory _errorMessage) private view {
+    function _checkIsContract(address _address) private view {
         if (!(_address.code.length > 0)) {
-            revert (_errorMessage);
+            revert NotContract(_address);
         }
     }
 }
