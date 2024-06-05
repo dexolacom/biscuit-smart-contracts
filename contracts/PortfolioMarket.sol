@@ -29,11 +29,15 @@ contract PortfolioMarket is AccessControl {
     uint256 public portfolioId;
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
-        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _checkIsContract(_uniswapFactory, "Uniswap Factory is not a contract");
+        _checkIsContract(_swapRouter, "Swap Router is not a contract");
+        _checkIsContract(_token, "Token is not a contract");
 
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         TOKEN = IERC20(_token);
+
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
     function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -115,6 +119,12 @@ contract PortfolioMarket is AccessControl {
                 });
 
             SWAP_ROUTER.exactInputSingle(params);
+        }
+    }
+
+    function _checkIsContract(address _address, string memory _errorMessage) internal view {
+        if (!(_address.code.length > 0)) {
+            revert (_errorMessage);
         }
     }
 }
