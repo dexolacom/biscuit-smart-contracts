@@ -26,7 +26,7 @@ contract PortfolioMarket is AccessControl {
     }
 
     mapping(uint256 => TokenShare[]) public portfolios;
-    uint256 public portfolioCount;
+    uint256 public portfolioId;
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -34,6 +34,12 @@ contract PortfolioMarket is AccessControl {
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         TOKEN = IERC20(_token);
+    }
+
+    function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < _portfolios.length; i++) {
+            addPortfolio(_portfolios[i]);
+        }
     }
 
     function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -54,31 +60,14 @@ contract PortfolioMarket is AccessControl {
         _addPortfolio(_portfolio);
     }
 
-    function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint24 _fee) public {
+    function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
+        if (_portfolioId > portfolioId) revert("Portfolio does not exist"); 
         if (_amount == 0 ) revert("Amount should be greater than zero");
-        if (_portfolioId > portfolioCount) revert("Portfolio does not exist"); 
 
-        TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
-        TokenShare[] memory portfolio = portfolios[_portfolioId];
+        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
-        for (uint256 i = 0; i < portfolio.length; i++) {
-            TokenShare memory tokenShare = portfolio[i];
-            uint256 tokenAmount = (_amount * tokenShare.share) / BIPS;
-
-            IV3SwapRouter.ExactInputSingleParams memory params =
-                IV3SwapRouter.ExactInputSingleParams({
-                    tokenIn: address(TOKEN),
-                    tokenOut: tokenShare.token,
-                    fee: fee,
-                    recipient: address(this),
-                    amountIn: tokenAmount,
-                    amountOutMinimum: 0, // need to fix later
-                    sqrtPriceLimitX96: 0
-                });
-
-            SWAP_ROUTER.exactInputSingle(params);
-        }
+        _buyPortfolio(_portfolioId, _amount, transactionTimeout, fee);
     }
 
     function tokenExistsOnUniswap(address _token) public view returns (bool) {
@@ -87,12 +76,33 @@ contract PortfolioMarket is AccessControl {
     }
 
     function _addPortfolio(TokenShare[] memory _portfolio) private {
-        TokenShare[] storage newPortfolio = portfolios[portfolioCount];
+        portfolioId++;
+        TokenShare[] storage newPortfolio = portfolios[portfolioId];
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
         }
-    
-        portfolioCount++;
+    }
+
+    function _buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) private {
+        TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
+        TokenShare[] memory portfolio = portfolios[_portfolioId];
+        for (uint256 i = 0; i < portfolio.length; i++) {
+            TokenShare memory tokenShare = portfolio[i];
+            uint256 tokenAmount = (_amount * tokenShare.share) / BIPS;
+
+            IV3SwapRouter.ExactInputSingleParams memory params =
+                IV3SwapRouter.ExactInputSingleParams({
+                    tokenIn: address(TOKEN),
+                    tokenOut: tokenShare.token,
+                    fee: _fee,
+                    recipient: address(this),
+                    amountIn: tokenAmount,
+                    amountOutMinimum: 0, // need to fix later
+                    sqrtPriceLimitX96: 0
+                });
+
+            SWAP_ROUTER.exactInputSingle(params);
+        }
     }
 }
