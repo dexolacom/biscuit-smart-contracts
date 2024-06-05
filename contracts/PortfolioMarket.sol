@@ -39,6 +39,7 @@ contract PortfolioMarket is AccessControl {
     mapping(uint256 => PortfolioToken[]) public portfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
+    event PortfolioUpdated(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
     event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
 
@@ -69,8 +70,9 @@ contract PortfolioMarket is AccessControl {
     }
 
     function addPortfolio(PortfolioToken[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        portfolioId++;
         _checkPortfolioTokens(_portfolio);
-        _addPortfolio(_portfolio);
+        _addPortfolio(portfolioId, _portfolio);
         emit PortfolioAdded(portfolioId, _portfolio);
     }
 
@@ -83,6 +85,12 @@ contract PortfolioMarket is AccessControl {
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
         _checkPortfolioExistence(_portfolioId);
         delete portfolios[_portfolioId];
+        emit PortfolioRemoved(_portfolioId);
+    }
+
+    function updatePortfolio(uint256 _portfolioId, PortfolioToken[] memory _newPortfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        removePortfolio(_portfolioId);
+        _addPortfolio(_portfolioId, _newPortfolio);
         emit PortfolioRemoved(_portfolioId);
     }
 
@@ -118,9 +126,8 @@ contract PortfolioMarket is AccessControl {
         return pair != address(0);
     }
 
-    function _addPortfolio(PortfolioToken[] memory _portfolio) private {
-        portfolioId++;
-        PortfolioToken[] storage newPortfolio = portfolios[portfolioId];
+    function _addPortfolio(uint256 _portfolioId, PortfolioToken[] memory _portfolio) private {
+        PortfolioToken[] storage newPortfolio = portfolios[_portfolioId];
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
@@ -158,7 +165,7 @@ contract PortfolioMarket is AccessControl {
         }
     }
 
-    function _checkPortfolioTokens(PortfolioToken[] memory _portfolio) internal view {
+    function _checkPortfolioTokens(PortfolioToken[] memory _portfolio) private view {
         uint256 totalShares = 0;
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
