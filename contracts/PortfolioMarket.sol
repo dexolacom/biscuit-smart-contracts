@@ -17,8 +17,9 @@ error SecondAgoUnchanged(uint32 value);
 error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
 error PoolDoesNotExist();
+error PortfolioNFTNotSet();
 error IncorrectTotalShares(uint256 totalShares);
-error OwnerDoesNotOwnToken(address owner, uint256 tokenId);
+error SenderDoesNotOwnToken(address owner, uint256 tokenId);
 error AmountZero();
 
 contract PortfolioMarket is AccessControl {
@@ -49,8 +50,13 @@ contract PortfolioMarket is AccessControl {
     event PortfolioUpdated(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
     event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
-
+    event PortfolioSold(uint256 indexed tokenId, address indexed seller);
     event SecondsAgoUpdated(uint32 newSecondsAgo);
+
+    modifier withSetupPortfolioNFT() {
+        if (address(portfolioNFT) == address(0)) revert PortfolioNFTNotSet();
+        _;
+    }
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
         _checkIsContract(_uniswapFactory);
@@ -105,7 +111,7 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioRemoved(_portfolioId);
     }
 
-    function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
+    function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public withSetupPortfolioNFT {
         _checkPortfolioExistence(_portfolioId);
         if (_amount == 0 ) revert AmountZero();
 
@@ -116,13 +122,14 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioBought(_portfolioId, msg.sender, _amount);
     }
 
-    function sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) public {
-        if (portfolioNFT.ownerOf(_tokenId) != msg.sender) revert OwnerDoesNotOwnToken(msg.sender, _tokenId);
-        console.log(portfolioNFT.ownerOf(_tokenId));
+    function sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) public withSetupPortfolioNFT {
+        if (portfolioNFT.ownerOf(_tokenId) != msg.sender) revert SenderDoesNotOwnToken(msg.sender, _tokenId);
+
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         _sellPortfolio(_tokenId, transactionTimeout, fee);
+        emit PortfolioSold(_tokenId, msg.sender);
     }
 
     function getExpectedMinAmountToken(
@@ -174,15 +181,15 @@ contract PortfolioMarket is AccessControl {
                     fee: _fee,
                     recipient: address(this),
                     amountIn: tokenAmount,
-                    amountOutMinimum: 0,
+                    amountOutMinimum: amountOutMinimum,
                     sqrtPriceLimitX96: 0
                 });
 
-            SWAP_ROUTER.exactInputSingle(params);
+            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
             boughtPortfolio[i] = Portfolio.PortfolioAsset({
                 token: portfolioToken.token,
-                amount: tokenAmount
+                amount: amountOut
             });
         }
 
