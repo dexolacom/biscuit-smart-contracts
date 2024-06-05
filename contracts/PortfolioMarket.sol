@@ -20,12 +20,12 @@ contract PortfolioMarket is AccessControl {
     uint24 public constant DEFAULT_FEE = 3_000;
     uint256 public constant BIPS = 100_00;
 
-    struct TokenShare {
+    struct PortfolioToken {
         address token;
         uint256 share;
     }
 
-    mapping(uint256 => TokenShare[]) public portfolios;
+    mapping(uint256 => PortfolioToken[]) public portfolios;
     uint256 public portfolioId;
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
@@ -40,16 +40,16 @@ contract PortfolioMarket is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolios(PortfolioToken[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
         for (uint256 i = 0; i < _portfolios.length; i++) {
             addPortfolio(_portfolios[i]);
         }
     }
 
-    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolio(PortfolioToken[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 totalShares;
         for (uint256 i = 0; i < _portfolio.length; i++) {
-            TokenShare memory tokenShare = _portfolio[i];
+            PortfolioToken memory tokenShare = _portfolio[i];
 
             if (!tokenExistsOnUniswap(tokenShare.token)) {
                 revert("Token doesn't exist");
@@ -91,9 +91,9 @@ contract PortfolioMarket is AccessControl {
         return pair != address(0);
     }
 
-    function _addPortfolio(TokenShare[] memory _portfolio) private {
+    function _addPortfolio(PortfolioToken[] memory _portfolio) private {
         portfolioId++;
-        TokenShare[] storage newPortfolio = portfolios[portfolioId];
+        PortfolioToken[] storage newPortfolio = portfolios[portfolioId];
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
@@ -102,9 +102,9 @@ contract PortfolioMarket is AccessControl {
 
     function _buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) private {
         TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
-        TokenShare[] memory portfolio = portfolios[_portfolioId];
+        PortfolioToken[] memory portfolio = portfolios[_portfolioId];
         for (uint256 i = 0; i < portfolio.length; i++) {
-            TokenShare memory tokenShare = portfolio[i];
+            PortfolioToken memory tokenShare = portfolio[i];
             uint256 tokenAmount = (_amount * tokenShare.share) / BIPS;
 
             IV3SwapRouter.ExactInputSingleParams memory params =
@@ -122,7 +122,7 @@ contract PortfolioMarket is AccessControl {
         }
     }
 
-    function _checkIsContract(address _address, string memory _errorMessage) internal view {
+    function _checkIsContract(address _address, string memory _errorMessage) private view {
         if (!(_address.code.length > 0)) {
             revert (_errorMessage);
         }
