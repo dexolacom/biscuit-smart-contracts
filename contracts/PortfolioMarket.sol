@@ -126,17 +126,18 @@ contract PortfolioMarket is AccessControl {
     }
 
     function getExpectedMinAmountToken(
-        address _token,
+        address _baseToken,
+        address _quoteToken,
         uint256 _amountIn,
         uint24 _fee
     ) public view returns (uint256 amountOutMinimum) {
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
-        address pool = UNISWAP_FACTORY.getPool(address(TOKEN), _token, fee);
+        address pool = UNISWAP_FACTORY.getPool(address(TOKEN), _quoteToken, fee);
         if (pool == address(0)) revert PoolDoesNotExist();
 
         (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
-        uint256 amountOut = OracleLibrary.getQuoteAtTick(tick, uint128(_amountIn), address(TOKEN), _token);
+        uint256 amountOut = OracleLibrary.getQuoteAtTick(tick, uint128(_amountIn), _baseToken, _quoteToken);
 
         amountOutMinimum = amountOut * SLIPPAGE_MULTIPLIER / BIPS;
     }
@@ -159,12 +160,12 @@ contract PortfolioMarket is AccessControl {
         TOKEN.approve(address(SWAP_ROUTER), _amount);
 
         PortfolioToken[] memory portfolio = portfolios[_portfolioId];
-        Portfolio.PortfolioAsset[] memory newPortfolio = new Portfolio.PortfolioAsset[](portfolio.length);
+        Portfolio.PortfolioAsset[] memory boughtPortfolio = new Portfolio.PortfolioAsset[](portfolio.length);
 
         for (uint256 i = 0; i < portfolio.length; i++) {
             PortfolioToken memory portfolioToken = portfolio[i];
             uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
-            // uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioToken.token, _amount, _fee);
+            uint256 amountOutMinimum = getExpectedMinAmountToken(address(TOKEN), portfolioToken.token, _amount, _fee);
 
             IV3SwapRouter.ExactInputSingleParams memory params =
                 IV3SwapRouter.ExactInputSingleParams({
@@ -179,13 +180,13 @@ contract PortfolioMarket is AccessControl {
 
             SWAP_ROUTER.exactInputSingle(params);
 
-            newPortfolio[i] = Portfolio.PortfolioAsset({
+            boughtPortfolio[i] = Portfolio.PortfolioAsset({
                 token: portfolioToken.token,
                 amount: tokenAmount
             });
         }
 
-        portfolioNFT.mint(msg.sender, newPortfolio);
+        portfolioNFT.mint(msg.sender, boughtPortfolio);
     }
 
     function _sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) private {
@@ -193,8 +194,9 @@ contract PortfolioMarket is AccessControl {
 
         for (uint256 i = 0; i < portfolio.length; i++) {
             Portfolio.PortfolioAsset memory portfolioAsset = portfolio[i];
+            uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioAsset.token, address(TOKEN), portfolioAsset.amount, _fee);
+            
             IERC20(portfolioAsset.token).approve(address(SWAP_ROUTER), portfolioAsset.amount);
-
             IV3SwapRouter.ExactInputSingleParams memory params =
                 IV3SwapRouter.ExactInputSingleParams({
                     tokenIn: portfolioAsset.token,
@@ -202,7 +204,7 @@ contract PortfolioMarket is AccessControl {
                     fee: _fee,
                     recipient: msg.sender,
                     amountIn: portfolioAsset.amount,
-                    amountOutMinimum: 0,
+                    amountOutMinimum: amountOutMinimum,
                     sqrtPriceLimitX96: 0
                 });
 
