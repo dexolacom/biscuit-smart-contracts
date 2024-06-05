@@ -94,14 +94,14 @@ contract PortfolioMarket is AccessControl {
     }
 
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (!portfolioExists(_portfolioId)) revert PortfolioDoesNotExist(_portfolioId);
+        _checkPortfolioExistence(_portfolioId);
 
         delete portfolios[_portfolioId];
         emit PortfolioRemoved(_portfolioId);
     }
 
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
-        if (!portfolioExists(_portfolioId)) revert PortfolioDoesNotExist(_portfolioId); 
+        _checkPortfolioExistence(_portfolioId);
         if (_amount == 0 ) revert AmountZero();
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
@@ -130,10 +130,6 @@ contract PortfolioMarket is AccessControl {
     function tokenExists(address _token) public view returns (bool) {
         address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE); // need to fix later (DEFAULT_FEE)
         return pair != address(0);
-    }
-
-    function portfolioExists(uint256 _portfolioId) public view returns (bool) {
-        return portfolios[_portfolioId].length > 0;
     }
 
     function _addPortfolio(PortfolioToken[] memory _portfolio) private {
@@ -173,6 +169,12 @@ contract PortfolioMarket is AccessControl {
     function _checkIsContract(address _address) private view {
         if (!(_address.code.length > 0)) {
             revert NotContract(_address);
+        }
+    }
+
+    function _checkPortfolioExistence(uint256 _portfolioId) private view {
+        if (portfolios[_portfolioId].length > 0) {
+            revert PortfolioDoesNotExist(_portfolioId);
         }
     }
 }
