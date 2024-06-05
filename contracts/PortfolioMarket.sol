@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 
 
 error NotContract(address account);
@@ -22,9 +23,13 @@ contract PortfolioMarket is AccessControl {
     IV3SwapRouter public immutable SWAP_ROUTER;
     IERC20 public immutable TOKEN;
 
+    uint256 public constant BIPS = 100_00;
+    uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 1000;
     uint24 public constant DEFAULT_FEE = 3_000;
-    uint256 public constant BIPS = 100_00;
+
+    uint32 public secondsAgo = 7200;
+    uint256 public portfolioId;
 
     struct PortfolioToken {
         address token;
@@ -32,11 +37,12 @@ contract PortfolioMarket is AccessControl {
     }
 
     mapping(uint256 => PortfolioToken[]) public portfolios;
-    uint256 public portfolioId;
 
     event PortfolioAdded(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
     event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
+
+    event SecondsAgoUpdated(uint32 newSecondsAgo);
 
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
         _checkIsContract(_uniswapFactory);
@@ -48,6 +54,12 @@ contract PortfolioMarket is AccessControl {
         TOKEN = IERC20(_token);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    }
+
+    function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if(secondsAgo == _newSecondsAgo) revert("New value must be different from the current value");
+        secondsAgo = _newSecondsAgo;
+        emit SecondsAgoUpdated(_newSecondsAgo);
     }
 
     function addPortfolios(PortfolioToken[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -99,6 +111,22 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioBought(_portfolioId, msg.sender, _amount);
     }
 
+    function getExpectedMinAmountToken(
+        address _token,
+        uint256 _amountIn,
+        uint24 _fee
+    ) public view returns (uint256 amountOutMinimum) {
+        uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
+
+        address pool = UNISWAP_FACTORY.getPool(address(TOKEN), _token, fee);
+        if (pool == address(0)) revert();
+
+        (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
+        uint256 amountOut = OracleLibrary.getQuoteAtTick(tick, uint128(_amountIn), address(TOKEN), _token);
+
+        amountOutMinimum = amountOut * SLIPPAGE_MULTIPLIER / BIPS;
+    }
+
     function tokenExists(address _token) public view returns (bool) {
         address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE); // need to fix later (DEFAULT_FEE)
         return pair != address(0);
@@ -119,19 +147,21 @@ contract PortfolioMarket is AccessControl {
 
     function _buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) private {
         TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
+
         PortfolioToken[] memory portfolio = portfolios[_portfolioId];
         for (uint256 i = 0; i < portfolio.length; i++) {
-            PortfolioToken memory tokenShare = portfolio[i];
-            uint256 tokenAmount = (_amount * tokenShare.share) / BIPS;
+            PortfolioToken memory portfolioToken = portfolio[i];
+            uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
+            uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioToken.token, _amount, _fee);
 
             IV3SwapRouter.ExactInputSingleParams memory params =
                 IV3SwapRouter.ExactInputSingleParams({
                     tokenIn: address(TOKEN),
-                    tokenOut: tokenShare.token,
+                    tokenOut: portfolioToken.token,
                     fee: _fee,
                     recipient: address(this),
                     amountIn: tokenAmount,
-                    amountOutMinimum: 0, // need to fix later
+                    amountOutMinimum: amountOutMinimum,
                     sqrtPriceLimitX96: 0
                 });
 
