@@ -8,6 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
+import {Portfolio} from "./Portfolio.sol";
 
 
 error NotContract(address account);
@@ -22,6 +23,8 @@ contract PortfolioMarket is AccessControl {
     IUniswapV3Factory public immutable UNISWAP_FACTORY; 
     IV3SwapRouter public immutable SWAP_ROUTER;
     IERC20 public immutable TOKEN;
+
+    Portfolio public portfolioNFT;
 
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
@@ -55,6 +58,10 @@ contract PortfolioMarket is AccessControl {
         TOKEN = IERC20(_token);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    }
+
+    function setPortfolioContract(address _porfolio) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        portfolioNFT = Portfolio(_porfolio);
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
