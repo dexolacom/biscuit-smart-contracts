@@ -69,20 +69,7 @@ contract PortfolioMarket is AccessControl {
     }
 
     function addPortfolio(PortfolioToken[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 totalShares;
-        for (uint256 i = 0; i < _portfolio.length; i++) {
-            PortfolioToken memory portfolioToken = _portfolio[i];
-
-            if (!tokenExists(portfolioToken.token)) {
-                revert TokenDoesNotExist(portfolioToken.token);
-            }
-
-            totalShares += portfolioToken.share;
-        }
-        if (totalShares != BIPS) {
-            revert IncorrectTotalShares(totalShares);
-        } 
-
+        _checkPortfolioTokens(_portfolio);
         _addPortfolio(_portfolio);
         emit PortfolioAdded(portfolioId, _portfolio);
     }
@@ -95,7 +82,6 @@ contract PortfolioMarket is AccessControl {
 
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
         _checkPortfolioExistence(_portfolioId);
-
         delete portfolios[_portfolioId];
         emit PortfolioRemoved(_portfolioId);
     }
@@ -171,6 +157,25 @@ contract PortfolioMarket is AccessControl {
             revert NotContract(_address);
         }
     }
+
+    function _checkPortfolioTokens(PortfolioToken[] memory _portfolio) internal view {
+        uint256 totalShares = 0;
+
+        for (uint256 i = 0; i < _portfolio.length; i++) {
+            PortfolioToken memory portfolioToken = _portfolio[i];
+
+            if (!tokenExists(portfolioToken.token)) {
+                revert TokenDoesNotExist(portfolioToken.token);
+            }
+
+            totalShares += portfolioToken.share;
+        }
+
+        if (totalShares != BIPS) {
+            revert IncorrectTotalShares(totalShares);
+        }
+    }
+
 
     function _checkPortfolioExistence(uint256 _portfolioId) private view {
         if (portfolios[_portfolioId].length > 0) {
