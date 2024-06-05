@@ -34,6 +34,10 @@ contract PortfolioMarket is AccessControl {
     mapping(uint256 => PortfolioToken[]) public portfolios;
     uint256 public portfolioId;
 
+    event PortfolioAdded(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
+    event PortfolioRemoved(uint256 indexed portfolioId);
+    event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
+
     constructor(address _admin, address _uniswapFactory, address _swapRouter, address _token)  {
         _checkIsContract(_uniswapFactory);
         _checkIsContract(_swapRouter);
@@ -68,6 +72,7 @@ contract PortfolioMarket is AccessControl {
         } 
 
         _addPortfolio(_portfolio);
+        emit PortfolioAdded(portfolioId, _portfolio);
     }
 
     function removePortfolios(uint256[] memory _portfolioIds) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -80,6 +85,7 @@ contract PortfolioMarket is AccessControl {
         if (_portfolioId > portfolioId) revert PortfolioDoesNotExist(_portfolioId);
 
         delete portfolios[_portfolioId];
+        emit PortfolioRemoved(_portfolioId);
     }
 
     function buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) public {
@@ -90,6 +96,7 @@ contract PortfolioMarket is AccessControl {
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         _buyPortfolio(_portfolioId, _amount, transactionTimeout, fee);
+        emit PortfolioBought(_portfolioId, msg.sender, _amount);
     }
 
     function tokenExistsOnUniswap(address _token) public view returns (bool) {
