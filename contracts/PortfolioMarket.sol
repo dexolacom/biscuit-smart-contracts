@@ -147,6 +147,7 @@ contract PortfolioMarket is AccessControl {
 
     function _buyPortfolio(uint256 _portfolioId, uint256 _amount, uint256 _transactionTimeout, uint24 _fee) private {
         TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
+        TOKEN.approve(address(SWAP_ROUTER), _amount);
 
         PortfolioToken[] memory portfolio = portfolios[_portfolioId];
         for (uint256 i = 0; i < portfolio.length; i++) {
