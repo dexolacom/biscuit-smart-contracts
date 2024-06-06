@@ -51,8 +51,8 @@ contract PortfolioMarket is AccessControl {
     event PortfolioRemoved(uint256 indexed portfolioId);
     event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
-    event SecondsAgoUpdated(uint32 newSecondsAgo);
     event PortfolioNFTContractSet(address indexed portfolioNFT);
+    event SecondsAgoUpdated(uint32 newSecondsAgo);
 
     modifier withSetupPortfolioNFT() {
         if (address(portfolioNFT) == address(0)) revert PortfolioNFTNotSet();
@@ -152,9 +152,17 @@ contract PortfolioMarket is AccessControl {
         amountOutMinimum = amountOut * SLIPPAGE_MULTIPLIER / BIPS;
     }
 
-    function tokenExists(address _token) public view returns (bool) {
+    function getTokenExists(address _token) public view returns (bool) {
         address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE);
         return pair != address(0);
+    }
+
+    function getPortfolio(uint256 _portfolioId) public view returns (TokenShare[] memory) {
+        return portfolios[_portfolioId];
+    }
+
+    function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
+        return portfolios[_portfolioId].length;
     }
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
