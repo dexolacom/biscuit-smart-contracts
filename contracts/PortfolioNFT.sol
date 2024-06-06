@@ -10,12 +10,12 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     uint256 public tokenId;
 
-    struct PortfolioAsset {
+    struct TokenAmount {
         address token;
         uint256 amount;
     }
 
-    mapping(uint256 => PortfolioAsset[]) public portfolios;
+    mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
     constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") {
         _grantRole(MARKET_ROLE, _portfolioMarket);
@@ -26,7 +26,7 @@ contract PortfolioNFT is ERC721, AccessControl {
         tokenId++;
         _safeMint(_to, tokenId);
 
-        PortfolioAsset[] storage newPortfolio = portfolios[tokenId];
+        purchasedPortfolios[] storage newPortfolio = purchasedPortfolios[tokenId];
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
         }
@@ -34,15 +34,15 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     function burn(uint256 _tokenId) public onlyRole(MARKET_ROLE) {
         _burn(_tokenId);
-        delete portfolios[_tokenId];
+        delete purchasedPortfolios[_tokenId];
     }
 
     function ownerOf(uint256 _tokenId) public view override returns(address) {
         return _ownerOf(_tokenId);
     }
 
-    function getPortfolio(uint256 _tokenId) public view returns (PortfolioAsset[] memory) {
-        return portfolios[_tokenId];
+    function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
+        return purchasedPortfolios[_tokenId];
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
