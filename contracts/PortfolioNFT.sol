@@ -26,7 +26,7 @@ contract PortfolioNFT is ERC721, AccessControl {
         tokenId++;
         _safeMint(_to, tokenId);
 
-        purchasedPortfolios[] storage newPortfolio = purchasedPortfolios[tokenId];
+        TokenAmount[] storage newPortfolio = purchasedPortfolios[tokenId];
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
         }
@@ -35,10 +35,6 @@ contract PortfolioNFT is ERC721, AccessControl {
     function burn(uint256 _tokenId) public onlyRole(MARKET_ROLE) {
         _burn(_tokenId);
         delete purchasedPortfolios[_tokenId];
-    }
-
-    function ownerOf(uint256 _tokenId) public view override returns(address) {
-        return _ownerOf(_tokenId);
     }
 
     function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
