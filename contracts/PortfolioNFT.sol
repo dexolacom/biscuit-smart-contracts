@@ -5,7 +5,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {PortfolioMarket} from "./PortfolioMarket.sol";
 
-contract Portfolio is ERC721, AccessControl {
+contract PortfolioNFT is ERC721, AccessControl {
     bytes32 public constant MARKET_ROLE = keccak256("MARKET");
 
     uint256 public tokenId;
