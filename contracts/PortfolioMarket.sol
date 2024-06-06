@@ -218,9 +218,7 @@ contract PortfolioMarket is AccessControl {
                     sqrtPriceLimitX96: 0
                 });
 
-            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
-
-            TOKEN.safeTransfer(msg.sender, amountOut);
+            SWAP_ROUTER.exactInputSingle(params);
         }
 
         portfolioNFT.burn(_tokenId);
