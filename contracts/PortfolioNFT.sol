@@ -6,6 +6,8 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 import {PortfolioMarket} from "./PortfolioMarket.sol";
 
+error NotContract(address account);
+
 contract PortfolioNFT is ERC721, AccessControl {
     bytes32 public constant MARKET_ROLE = keccak256("MARKET");
 
@@ -18,7 +20,9 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
-    constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") {
+    constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") 
+        _checkIsContract(_portfolioMarket);
+
         _grantRole(MARKET_ROLE, _portfolioMarket); // expected PortfolioMarket contract
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
@@ -48,6 +52,12 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _checkIsContract(address _address) private view {
+        if (!(_address.code.length > 0)) {
+            revert NotContract(_address);
+        }
     }
 }
 
