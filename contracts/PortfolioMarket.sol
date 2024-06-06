@@ -8,9 +8,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
-import {Portfolio} from "./Portfolio.sol";
 
-import "hardhat/console.sol";
+import {PortfolioNFT} from "./PortfolioNFT.sol";
 
 error NotContract(address account);
 error SecondAgoUnchanged(uint32 value);
@@ -30,27 +29,27 @@ contract PortfolioMarket is AccessControl {
     IV3SwapRouter public immutable SWAP_ROUTER;
     IERC20 public immutable TOKEN;
 
-    Portfolio public portfolioNFT;
+    PortfolioNFT public portfolioNFT;
 
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 1000;
-    uint24 public constant DEFAULT_FEE = 3_000;
+    uint24 public constant DEFAULT_FEE = 1_000;
 
     uint32 public secondsAgo = 7200;
     uint256 public portfolioId;
 
-    struct PortfolioToken {
+    struct TokenShare {
         address token;
         uint256 share;
     }
 
-    mapping(uint256 => PortfolioToken[]) public portfolios;
+    mapping(uint256 => TokenShare[]) portfolios;
 
-    event PortfolioAdded(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
-    event PortfolioUpdated(uint256 indexed portfolioId, PortfolioToken[] portfolioTokens);
+    event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
+    event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
-    event PortfolioBought(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
+    event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
     event SecondsAgoUpdated(uint32 newSecondsAgo);
     event PortfolioNFTContractSet(address indexed portfolioNFT);
@@ -74,7 +73,7 @@ contract PortfolioMarket is AccessControl {
 
     function setPortfolioNFTContract(address _porfolioNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (address(portfolioNFT) != address(0)) revert PortfolioNFTAlreadySet();
-        portfolioNFT = Portfolio(_porfolioNFT);
+        portfolioNFT = PortfolioNFT(_porfolioNFT);
         emit PortfolioNFTContractSet(_porfolioNFT);
     }
 
@@ -84,13 +83,13 @@ contract PortfolioMarket is AccessControl {
         emit SecondsAgoUpdated(_newSecondsAgo);
     }
 
-    function addPortfolios(PortfolioToken[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
         for (uint256 i = 0; i < _portfolios.length; i++) {
             addPortfolio(_portfolios[i]);
         }
     }
 
-    function addPortfolio(PortfolioToken[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
         portfolioId++;
         _checkPortfolioTokens(_portfolio);
         _addPortfolio(portfolioId, _portfolio);
@@ -109,7 +108,7 @@ contract PortfolioMarket is AccessControl {
         emit PortfolioRemoved(_portfolioId);
     }
 
-    function updatePortfolio(uint256 _portfolioId, PortfolioToken[] memory _newPortfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updatePortfolio(uint256 _portfolioId, TokenShare[] memory _newPortfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
         removePortfolio(_portfolioId);
         _addPortfolio(_portfolioId, _newPortfolio);
         emit PortfolioRemoved(_portfolioId);
@@ -123,7 +122,7 @@ contract PortfolioMarket is AccessControl {
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         _buyPortfolio(_portfolioId, _amount, transactionTimeout, fee);
-        emit PortfolioBought(_portfolioId, msg.sender, _amount);
+        emit PortfolioPurchased(_portfolioId, msg.sender, _amount);
     }
 
     function sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) public withSetupPortfolioNFT {
@@ -154,12 +153,12 @@ contract PortfolioMarket is AccessControl {
     }
 
     function tokenExists(address _token) public view returns (bool) {
-        address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE); // need to fix later (DEFAULT_FEE)
+        address pair = UNISWAP_FACTORY.getPool(_token, address(TOKEN), DEFAULT_FEE);
         return pair != address(0);
     }
 
-    function _addPortfolio(uint256 _portfolioId, PortfolioToken[] memory _portfolio) private {
-        PortfolioToken[] storage newPortfolio = portfolios[_portfolioId];
+    function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
+        TokenShare[] storage newPortfolio = portfolios[_portfolioId];
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
             newPortfolio.push(_portfolio[i]);
@@ -170,11 +169,11 @@ contract PortfolioMarket is AccessControl {
         TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
         TOKEN.approve(address(SWAP_ROUTER), _amount);
 
-        PortfolioToken[] memory portfolio = portfolios[_portfolioId];
-        Portfolio.PortfolioAsset[] memory boughtPortfolio = new Portfolio.PortfolioAsset[](portfolio.length);
+        TokenShare[] memory portfolio = portfolios[_portfolioId];
+        PortfolioNFT.TokenAmount[] memory purchasedPortfolio = new PortfolioNFT.TokenAmount[](portfolio.length);
 
         for (uint256 i = 0; i < portfolio.length; i++) {
-            PortfolioToken memory portfolioToken = portfolio[i];
+            TokenShare memory portfolioToken = portfolio[i];
             uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
             uint256 amountOutMinimum = getExpectedMinAmountToken(address(TOKEN), portfolioToken.token, _amount, _fee);
 
@@ -191,30 +190,30 @@ contract PortfolioMarket is AccessControl {
 
             uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
-            boughtPortfolio[i] = Portfolio.PortfolioAsset({
+            purchasedPortfolio[i] = PortfolioNFT.TokenAmount({
                 token: portfolioToken.token,
                 amount: amountOut
             });
         }
 
-        portfolioNFT.mint(msg.sender, boughtPortfolio);
+        portfolioNFT.mint(msg.sender, purchasedPortfolio);
     }
 
     function _sellPortfolio(uint256 _tokenId, uint256 _transactionTimeout, uint24 _fee) private {
-        Portfolio.PortfolioAsset[] memory portfolio = portfolioNFT.getPortfolio(_tokenId);
+        PortfolioNFT.TokenAmount[] memory purchasedPortfolio = portfolioNFT.getPurchasedPortfolio(_tokenId);
 
-        for (uint256 i = 0; i < portfolio.length; i++) {
-            Portfolio.PortfolioAsset memory portfolioAsset = portfolio[i];
-            uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioAsset.token, address(TOKEN), portfolioAsset.amount, _fee);
+        for (uint256 i = 0; i < purchasedPortfolio.length; i++) {
+            PortfolioNFT.TokenAmount memory portfolioToken = purchasedPortfolio[i];
+            uint256 amountOutMinimum = getExpectedMinAmountToken(portfolioToken.token, address(TOKEN), portfolioToken.amount, _fee);
             
-            IERC20(portfolioAsset.token).approve(address(SWAP_ROUTER), portfolioAsset.amount);
+            IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             IV3SwapRouter.ExactInputSingleParams memory params =
                 IV3SwapRouter.ExactInputSingleParams({
-                    tokenIn: portfolioAsset.token,
+                    tokenIn: portfolioToken.token,
                     tokenOut: address(TOKEN),
                     fee: _fee,
                     recipient: msg.sender,
-                    amountIn: portfolioAsset.amount,
+                    amountIn: portfolioToken.amount,
                     amountOutMinimum: amountOutMinimum,
                     sqrtPriceLimitX96: 0
                 });
@@ -233,11 +232,11 @@ contract PortfolioMarket is AccessControl {
         }
     }
 
-    function _checkPortfolioTokens(PortfolioToken[] memory _portfolio) private view {
+    function _checkPortfolioTokens(TokenShare[] memory _portfolio) private view {
         uint256 totalShares = 0;
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
-            PortfolioToken memory portfolioToken = _portfolio[i];
+            TokenShare memory portfolioToken = _portfolio[i];
 
             if (!tokenExists(portfolioToken.token)) {
                 revert TokenDoesNotExist(portfolioToken.token);

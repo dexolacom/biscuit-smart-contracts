@@ -27,7 +27,7 @@ contract PortfolioNFT is ERC721, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function mint(address _to, PortfolioAsset[] memory _portfolio) public onlyRole(MARKET_ROLE) {
+    function mint(address _to, TokenAmount[] memory _portfolio) public onlyRole(MARKET_ROLE) {
         tokenId++;
         _mint(_to, tokenId);
 
@@ -47,7 +47,7 @@ contract PortfolioNFT is ERC721, AccessControl {
     }
 
     function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
-        return purchasedPortfolios[_tokenId].lenght;
+        return purchasedPortfolios[_tokenId].length;
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
