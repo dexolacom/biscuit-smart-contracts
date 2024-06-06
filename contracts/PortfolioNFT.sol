@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import {PortfolioMarket} from "./PortfolioMarket.sol";
 
 contract PortfolioNFT is ERC721, AccessControl {
@@ -18,7 +19,7 @@ contract PortfolioNFT is ERC721, AccessControl {
     mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
     constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") {
-        _grantRole(MARKET_ROLE, _portfolioMarket);
+        _grantRole(MARKET_ROLE, _portfolioMarket); // expected PortfolioMarket contract
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
@@ -39,6 +40,10 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
         return purchasedPortfolios[_tokenId];
+    }
+
+    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
+        return purchasedPortfolios[_tokenId].lenght;
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
