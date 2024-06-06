@@ -24,7 +24,7 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     function mint(address _to, PortfolioAsset[] memory _portfolio) public onlyRole(MARKET_ROLE) {
         tokenId++;
-        _safeMint(_to, tokenId);
+        _mint(_to, tokenId);
 
         TokenAmount[] storage newPortfolio = purchasedPortfolios[tokenId];
         for (uint256 i = 0; i < _portfolio.length; i++) {
