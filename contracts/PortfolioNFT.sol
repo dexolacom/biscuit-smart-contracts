@@ -20,7 +20,7 @@ contract PortfolioNFT is ERC721, AccessControl {
 
     mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
-    constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") 
+    constructor(address _admin, address _portfolioMarket) ERC721("PortfolioNFT", "PNFT") {
         _checkIsContract(_portfolioMarket);
 
         _grantRole(MARKET_ROLE, _portfolioMarket); // expected PortfolioMarket contract
