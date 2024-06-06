@@ -244,7 +244,7 @@ contract PortfolioMarket is AccessControl {
         for (uint256 i = 0; i < _portfolio.length; i++) {
             TokenShare memory portfolioToken = _portfolio[i];
 
-            if (!tokenExists(portfolioToken.token)) {
+            if (!getTokenExists(portfolioToken.token)) {
                 revert TokenDoesNotExist(portfolioToken.token);
             }
 
