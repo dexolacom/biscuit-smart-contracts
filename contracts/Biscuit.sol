@@ -20,7 +20,6 @@ contract Biscuit is ERC721 {
     }
 
     struct BurnParams {
-        uint256 tokenId;
         address[] targets;
         uint256[] values;
         string[] signatures;
@@ -29,11 +28,15 @@ contract Biscuit is ERC721 {
 
     uint256 public tokenId;
 
+    mapping(uint256 => BurnParams) burnParamsByTokenId;
+
     constructor() ERC721("Biscuit", "BSC") {}
 
-    function mint(MintParams memory mintParams) external payable returns (bytes[] memory) {
+    function mint(MintParams memory mintParams, BurnParams memory burnParams) external payable returns (bytes[] memory) {
         tokenId++;
         _safeMint(mintParams.to, tokenId);
+
+        burnParamsByTokenId[tokenId] = burnParams;
         bytes[] memory data = _execute(
             mintParams.targets,
             mintParams.values,
@@ -44,12 +47,13 @@ contract Biscuit is ERC721 {
         return data;
     }
 
-    function burn(BurnParams memory burnParams) external payable returns (bytes[] memory) {
-        if (!_isAuthorized(_ownerOf(burnParams.tokenId), msg.sender, burnParams.tokenId)) {
+    function burn(uint256 _tokenId) external payable returns (bytes[] memory) {
+        if (!_isAuthorized(_ownerOf(_tokenId), msg.sender, _tokenId)) {
             revert NotApprovedOrOwner();
         }
+        _burn(_tokenId);
 
-        _burn(burnParams.tokenId);
+        BurnParams memory burnParams = burnParamsByTokenId[_tokenId];
         bytes[] memory data = _execute(
             burnParams.targets,
             burnParams.values,
