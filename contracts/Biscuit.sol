@@ -12,6 +12,8 @@ error TransactionExecutionReverted();
 error ActionNotAllowed();
 
 contract Biscuit is ERC721, AccessControl {
+    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR");
+
     uint256 public tokenId;
     uint256 public proposalId;
 
@@ -42,8 +44,9 @@ contract Biscuit is ERC721, AccessControl {
         _;
     }
 
-    constructor(address _admin) ERC721("Biscuit", "BSC") {
+    constructor(address _admin, address _executor) ERC721("Biscuit", "BSC") {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(EXECUTOR_ROLE, _executor);
     }
 
     function mint(address _to) external onlyDuringExecution {
@@ -60,7 +63,7 @@ contract Biscuit is ERC721, AccessControl {
         uint[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public returns (uint256) {
+    ) public onlyRole(EXECUTOR_ROLE) returns (uint256) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
@@ -101,7 +104,7 @@ contract Biscuit is ERC721, AccessControl {
 
     function execute(
         uint256 _proposalId
-    ) public payable returns (bytes[] memory) {
+    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
         Proposal storage proposal = proposals[_proposalId];
         if (proposal.executed) revert ProposalAlreadyExecuted();
 
