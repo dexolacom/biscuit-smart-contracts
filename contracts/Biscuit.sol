@@ -15,20 +15,47 @@ contract Biscuit is ERC721, AccessControl {
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR");
 
     uint256 public tokenId;
-    uint256 public proposalId;
+
+    struct MintParams {
+        address to;
+        address[] targets;
+        uint[] values;
+        string[] signatures;
+        bytes[] calldatas;
+    }
+
+    struct BurnParams {
+        uint256 tokenId;
+        address[] targets;
+        uint[] values;
+        string[] signatures;
+        bytes[] calldatas;
+    }
 
     constructor(address _admin, address _executor) ERC721("Biscuit", "BSC") {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(EXECUTOR_ROLE, _executor);
     }
 
-    function mint(address _to) external {
+    function mint(MintParams memory mintParams) external {
         tokenId++;
-        _safeMint(_to, tokenId);
+        _safeMint(mintParams.to, tokenId);
+        execute(
+            mintParams.targets,
+            mintParams.values,
+            mintParams.signatures,
+            mintParams.calldatas
+        );
     }
 
-    function burn(uint256 _tokenId) external {
-        _burn(_tokenId);
+    function burn(BurnParams memory burnParams) external {
+        _burn(burnParams.tokenId);
+        execute(
+            burnParams.targets,
+            burnParams.values,
+            burnParams.signatures,
+            burnParams.calldatas
+        );
     }
 
     function execute(
@@ -36,7 +63,7 @@ contract Biscuit is ERC721, AccessControl {
         uint[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
+    ) public payable returns (bytes[] memory) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
