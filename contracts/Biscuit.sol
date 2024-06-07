@@ -41,7 +41,7 @@ contract Biscuit is ERC721, AccessControl {
     event ProposalExecuted(uint256 id);
 
     modifier onlyDuringExecutionAndSwap() {
-        if (msg.sender != address(this) && !swapExecuted) {
+        if (msg.sender != address(this) || !swapExecuted) {
             revert ActionNotAllowed();
         }
         _;
@@ -115,28 +115,12 @@ contract Biscuit is ERC721, AccessControl {
         proposal.executed = true;
         bytes[] memory returnDataArray = new bytes[](proposal.targets.length);
         for (uint256 i = 0; i < proposal.targets.length; i++) {
-            bytes memory callData;
-            if (bytes(proposal.signatures[i]).length == 0) {
-                callData = proposal.calldatas[i];
-            } else {
-                callData = abi.encodePacked(
-                    bytes4(keccak256(bytes(proposal.signatures[i]))),
-                    proposal.calldatas[i]
-                );
-            }
-
-            (bool success, bytes memory returnData) = proposal.targets[i].call{
-                value: proposal.values[i]
-            }(callData);
-            if (!success) revert TransactionExecutionReverted();
-
-            if (
-                keccak256(bytes(proposal.signatures[i])) == keccak256("swap()")
-            ) {
-                swapExecuted = true;
-            }
-
-            returnDataArray[i] = returnData;
+            returnDataArray[i] = _executeTransaction(
+                proposal.targets[i],
+                proposal.values[i],
+                proposal.signatures[i],
+                proposal.calldatas[i]
+            );
         }
 
         emit ProposalExecuted(_proposalId);
@@ -145,6 +129,35 @@ contract Biscuit is ERC721, AccessControl {
 
     function proposalMaxOperations() public pure returns (uint256) {
         return 10;
+    }
+
+    function _executeTransaction(
+        address _target,
+        uint256 _value,
+        string memory _signature,
+        bytes memory _calldata
+    ) private returns (bytes memory) {
+        bytes memory callData;
+        if (bytes(_signature).length == 0) {
+            callData = _calldata;
+        } else {
+            callData = abi.encodePacked(
+                bytes4(keccak256(bytes(_signature))),
+                _calldata
+            );
+        }
+
+        (bool success, bytes memory returnData) = _target.call{value: _value}(
+            callData
+        );
+        if (!success) revert TransactionExecutionReverted();
+
+        // example discovered swap function
+        if (keccak256(bytes(_signature)) == keccak256("swap()")) {
+            swapExecuted = true;
+        }
+
+        return returnData;
     }
 
     function supportsInterface(
