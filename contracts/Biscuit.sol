@@ -9,6 +9,7 @@ error MustProvideActions();
 error TooManyActions();
 error ProposalAlreadyExecuted();
 error TransactionExecutionReverted();
+error ActionNotAllowed();
 
 contract Biscuit is ERC721, AccessControl {
     uint256 public tokenId;
@@ -36,16 +37,21 @@ contract Biscuit is ERC721, AccessControl {
     );
     event ProposalExecuted(uint256 id);
 
+    modifier onlyDuringExecution() {
+        if (msg.sender != address(this)) revert ActionNotAllowed();
+        _;
+    }
+
     constructor(address _admin) ERC721("Biscuit", "BSC") {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function mint(address to) external {
+    function mint(address _to) external onlyDuringExecution {
         tokenId++;
-        _safeMint(to, tokenId);
+        _safeMint(_to, tokenId);
     }
 
-    function burn(uint256 _tokenId) external {
+    function burn(uint256 _tokenId) external onlyDuringExecution {
         _burn(_tokenId);
     }
 
