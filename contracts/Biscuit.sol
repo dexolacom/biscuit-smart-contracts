@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 error ArrayMismatch();
 error MustProvideActions();
@@ -11,11 +10,7 @@ error TransactionExecutionReverted();
 error ActionNotAllowed();
 error NotApprovedOrOwner();
 
-contract Biscuit is ERC721, AccessControl {
-    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR");
-
-    uint256 public tokenId;
-
+contract Biscuit is ERC721 {
     struct MintParams {
         address to;
         address[] targets;
@@ -32,9 +27,9 @@ contract Biscuit is ERC721, AccessControl {
         bytes[] calldatas;
     }
 
-    constructor(address _admin) ERC721("Biscuit", "BSC") {
-        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    }
+    uint256 public tokenId;
+
+    constructor() ERC721("Biscuit", "BSC") {}
 
     function mint(MintParams memory mintParams) external returns (bytes[] memory) {
         tokenId++;
@@ -70,7 +65,7 @@ contract Biscuit is ERC721, AccessControl {
         uint[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
+    ) public payable returns (bytes[] memory) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
@@ -124,11 +119,5 @@ contract Biscuit is ERC721, AccessControl {
         if (!success) revert TransactionExecutionReverted();
 
         return returnData;
-    }
-
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC721, AccessControl) returns (bool) {
-        return super.supportsInterface(interfaceId);
     }
 }
