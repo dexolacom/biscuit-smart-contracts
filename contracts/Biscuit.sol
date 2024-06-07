@@ -17,28 +17,6 @@ contract Biscuit is ERC721, AccessControl {
     uint256 public tokenId;
     uint256 public proposalId;
 
-    struct Proposal {
-        uint id;
-        address proposer;
-        address[] targets;
-        uint[] values;
-        string[] signatures;
-        bytes[] calldatas;
-        bool executed;
-    }
-
-    mapping(uint256 => Proposal) public proposals;
-
-    event ProposalCreated(
-        uint256 id,
-        address proposer,
-        address[] targets,
-        uint256[] values,
-        string[] signatures,
-        bytes[] calldatas
-    );
-    event ProposalExecuted(uint256 id);
-
     constructor(address _admin, address _executor) ERC721("Biscuit", "BSC") {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(EXECUTOR_ROLE, _executor);
@@ -53,12 +31,12 @@ contract Biscuit is ERC721, AccessControl {
         _burn(_tokenId);
     }
 
-    function propose(
+    function execute(
         address[] memory targets,
         uint[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public onlyRole(EXECUTOR_ROLE) returns (uint256) {
+    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
@@ -73,48 +51,16 @@ contract Biscuit is ERC721, AccessControl {
             revert TooManyActions();
         }
 
-        Proposal memory newProposal = Proposal({
-            id: proposalId,
-            proposer: msg.sender,
-            targets: targets,
-            values: values,
-            signatures: signatures,
-            calldatas: calldatas,
-            executed: false
-        });
-
-        proposalId++;
-        proposals[proposalId] = newProposal;
-
-        emit ProposalCreated(
-            proposalId,
-            msg.sender,
-            targets,
-            values,
-            signatures,
-            calldatas
-        );
-        return proposalId;
-    }
-
-    function execute(
-        uint256 _proposalId
-    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
-        Proposal storage proposal = proposals[_proposalId];
-        if (proposal.executed) revert ProposalAlreadyExecuted();
-
-        proposal.executed = true;
-        bytes[] memory returnDataArray = new bytes[](proposal.targets.length);
-        for (uint256 i = 0; i < proposal.targets.length; i++) {
+        bytes[] memory returnDataArray = new bytes[](targets.length);
+        for (uint256 i = 0; i < targets.length; i++) {
             returnDataArray[i] = _executeTransaction(
-                proposal.targets[i],
-                proposal.values[i],
-                proposal.signatures[i],
-                proposal.calldatas[i]
+                targets[i],
+                values[i],
+                signatures[i],
+                calldatas[i]
             );
         }
 
-        emit ProposalExecuted(_proposalId);
         return returnDataArray;
     }
 
