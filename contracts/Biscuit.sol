@@ -14,7 +14,7 @@ contract Biscuit is ERC721 {
     struct MintParams {
         address to;
         address[] targets;
-        uint[] values;
+        uint256[] values;
         string[] signatures;
         bytes[] calldatas;
     }
@@ -22,7 +22,7 @@ contract Biscuit is ERC721 {
     struct BurnParams {
         uint256 tokenId;
         address[] targets;
-        uint[] values;
+        uint256[] values;
         string[] signatures;
         bytes[] calldatas;
     }
@@ -31,10 +31,10 @@ contract Biscuit is ERC721 {
 
     constructor() ERC721("Biscuit", "BSC") {}
 
-    function mint(MintParams memory mintParams) external returns (bytes[] memory) {
+    function mint(MintParams memory mintParams) external payable returns (bytes[] memory) {
         tokenId++;
         _safeMint(mintParams.to, tokenId);
-        bytes[] memory data = execute(
+        bytes[] memory data = _execute(
             mintParams.targets,
             mintParams.values,
             mintParams.signatures,
@@ -44,13 +44,13 @@ contract Biscuit is ERC721 {
         return data;
     }
 
-    function burn(BurnParams memory burnParams) external returns (bytes[] memory) {
+    function burn(BurnParams memory burnParams) external payable returns (bytes[] memory) {
         if (!_isAuthorized(_ownerOf(burnParams.tokenId), msg.sender, burnParams.tokenId)) {
             revert NotApprovedOrOwner();
         }
 
         _burn(burnParams.tokenId);
-        bytes[] memory data = execute(
+        bytes[] memory data = _execute(
             burnParams.targets,
             burnParams.values,
             burnParams.signatures,
@@ -60,12 +60,12 @@ contract Biscuit is ERC721 {
         return data;
     }
 
-    function execute(
+    function _execute(
         address[] memory targets,
-        uint[] memory values,
+        uint256[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public payable returns (bytes[] memory) {
+    ) private returns (bytes[] memory) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
