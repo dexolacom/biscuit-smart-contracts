@@ -16,6 +16,7 @@ contract Biscuit is ERC721, AccessControl {
 
     uint256 public tokenId;
     uint256 public proposalId;
+    bool public swapExecuted;
 
     struct Proposal {
         uint id;
@@ -39,8 +40,10 @@ contract Biscuit is ERC721, AccessControl {
     );
     event ProposalExecuted(uint256 id);
 
-    modifier onlyDuringExecution() {
-        if (msg.sender != address(this)) revert ActionNotAllowed();
+    modifier onlyDuringExecutionAndSwap() {
+        if (msg.sender != address(this) && !swapExecuted) {
+            revert ActionNotAllowed();
+        }
         _;
     }
 
@@ -49,12 +52,12 @@ contract Biscuit is ERC721, AccessControl {
         _grantRole(EXECUTOR_ROLE, _executor);
     }
 
-    function mint(address _to) external onlyDuringExecution {
+    function mint(address _to) external onlyDuringExecutionAndSwap {
         tokenId++;
         _safeMint(_to, tokenId);
     }
 
-    function burn(uint256 _tokenId) external onlyDuringExecution {
+    function burn(uint256 _tokenId) external onlyDuringExecutionAndSwap {
         _burn(_tokenId);
     }
 
@@ -108,6 +111,7 @@ contract Biscuit is ERC721, AccessControl {
         Proposal storage proposal = proposals[_proposalId];
         if (proposal.executed) revert ProposalAlreadyExecuted();
 
+        swapExecuted = false;
         proposal.executed = true;
         bytes[] memory returnDataArray = new bytes[](proposal.targets.length);
         for (uint256 i = 0; i < proposal.targets.length; i++) {
@@ -125,6 +129,12 @@ contract Biscuit is ERC721, AccessControl {
                 value: proposal.values[i]
             }(callData);
             if (!success) revert TransactionExecutionReverted();
+
+            if (
+                keccak256(bytes(proposal.signatures[i])) == keccak256("swap()")
+            ) {
+                swapExecuted = true;
+            }
 
             returnDataArray[i] = returnData;
         }
