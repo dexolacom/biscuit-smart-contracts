@@ -7,9 +7,9 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 error ArrayMismatch();
 error MustProvideActions();
 error TooManyActions();
-error ProposalAlreadyExecuted();
 error TransactionExecutionReverted();
 error ActionNotAllowed();
+error NotApprovedOrOwner();
 
 contract Biscuit is ERC721, AccessControl {
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR");
@@ -49,6 +49,10 @@ contract Biscuit is ERC721, AccessControl {
     }
 
     function burn(BurnParams memory burnParams) external {
+        if (!_isAuthorized(_ownerOf(burnParams.tokenId), msg.sender, burnParams.tokenId)) {
+            revert NotApprovedOrOwner();
+        }
+
         _burn(burnParams.tokenId);
         execute(
             burnParams.targets,
