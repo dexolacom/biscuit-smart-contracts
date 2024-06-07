@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 error ArrayMismatch();
 error MustProvideActions();
@@ -9,7 +10,7 @@ error TooManyActions();
 error ProposalAlreadyExecuted();
 error TransactionExecutionReverted();
 
-contract Biscuit is ERC721 {
+contract Biscuit is ERC721, AccessControl {
     uint256 public tokenId;
     uint256 public proposalId;
 
@@ -35,7 +36,9 @@ contract Biscuit is ERC721 {
     );
     event ProposalExecuted(uint256 id);
 
-    constructor() ERC721("Biscuit", "BSC") {}
+    constructor(address _admin) ERC721("Biscuit", "BSC") {
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    }
 
     function mint(address to) external {
         tokenId++;
@@ -123,5 +126,11 @@ contract Biscuit is ERC721 {
 
     function proposalMaxOperations() public pure returns (uint256) {
         return 10;
+    }
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
