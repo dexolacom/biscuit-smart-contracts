@@ -32,34 +32,37 @@ contract Biscuit is ERC721, AccessControl {
         bytes[] calldatas;
     }
 
-    constructor(address _admin, address _executor) ERC721("Biscuit", "BSC") {
+    constructor(address _admin) ERC721("Biscuit", "BSC") {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-        _grantRole(EXECUTOR_ROLE, _executor);
     }
 
-    function mint(MintParams memory mintParams) external {
+    function mint(MintParams memory mintParams) external returns (bytes[] memory) {
         tokenId++;
         _safeMint(mintParams.to, tokenId);
-        execute(
+        bytes[] memory data = execute(
             mintParams.targets,
             mintParams.values,
             mintParams.signatures,
             mintParams.calldatas
         );
+
+        return data;
     }
 
-    function burn(BurnParams memory burnParams) external {
+    function burn(BurnParams memory burnParams) external returns (bytes[] memory) {
         if (!_isAuthorized(_ownerOf(burnParams.tokenId), msg.sender, burnParams.tokenId)) {
             revert NotApprovedOrOwner();
         }
 
         _burn(burnParams.tokenId);
-        execute(
+        bytes[] memory data = execute(
             burnParams.targets,
             burnParams.values,
             burnParams.signatures,
             burnParams.calldatas
         );
+
+        return data;
     }
 
     function execute(
@@ -67,7 +70,7 @@ contract Biscuit is ERC721, AccessControl {
         uint[] memory values,
         string[] memory signatures,
         bytes[] memory calldatas
-    ) public payable returns (bytes[] memory) {
+    ) public payable onlyRole(EXECUTOR_ROLE) returns (bytes[] memory) {
         if (
             targets.length != values.length ||
             targets.length != signatures.length ||
