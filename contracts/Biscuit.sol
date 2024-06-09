@@ -64,6 +64,17 @@ contract Biscuit is ERC721 {
         return data;
     }
 
+    function updateBurnParams(uint256 _tokenId, BurnParams memory newBurnParams) external {
+        if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) {
+            revert NotApprovedOrOwner();
+        }
+        burnParamsByTokenId[_tokenId] = newBurnParams;
+    }
+
+    function proposalMaxOperations() public pure returns (uint256) {
+        return 10;
+    }
+
     function _execute(
         address[] memory targets,
         uint256[] memory values,
@@ -95,10 +106,6 @@ contract Biscuit is ERC721 {
         }
 
         return returnDataArray;
-    }
-
-    function proposalMaxOperations() public pure returns (uint256) {
-        return 10;
     }
 
     function _executeTransaction(
