@@ -5,7 +5,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 error ArrayMismatch();
 error MustProvideActions();
-error TooManyActions();
+error TooManyOperations();
 error TransactionExecutionReverted();
 error ActionNotAllowed();
 error NotApprovedOrOwner();
@@ -26,6 +26,7 @@ contract Biscuit is ERC721 {
         bytes[] calldatas;
     }
 
+    uint256 public constant MAX_OPERATIONS = 12;
     uint256 public tokenId;
 
     mapping(uint256 => BurnParams) burnParamsByTokenId;
@@ -71,10 +72,6 @@ contract Biscuit is ERC721 {
         burnParamsByTokenId[_tokenId] = newBurnParams;
     }
 
-    function proposalMaxOperations() public pure returns (uint256) {
-        return 10;
-    }
-
     function _execute(
         address[] memory targets,
         uint256[] memory values,
@@ -91,8 +88,8 @@ contract Biscuit is ERC721 {
         if (targets.length == 0) {
             revert MustProvideActions();
         }
-        if (targets.length > proposalMaxOperations()) {
-            revert TooManyActions();
+        if (targets.length > MAX_OPERATIONS) {
+            revert TooManyOperations();
         }
 
         bytes[] memory returnDataArray = new bytes[](targets.length);
