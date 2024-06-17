@@ -31,7 +31,7 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 1000;
     uint24 public constant DEFAULT_FEE = 1_000;
 
-    uint32 public secondsAgo = 7200;
+    uint32 public secondsAgo = 2 hours;
     uint256 public portfolioId;
 
     struct TokenShare {
@@ -41,22 +41,11 @@ contract BiscuitV1 is ERC721, AccessControl {
 
     mapping(uint256 => TokenShare[]) portfolios;
 
-    event PortfolioAdded(
-        uint256 indexed portfolioId,
-        TokenShare[] portfolioTokens
-    );
-    event PortfolioUpdated(
-        uint256 indexed portfolioId,
-        TokenShare[] portfolioTokens
-    );
+    event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
+    event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
-    event PortfolioPurchased(
-        uint256 indexed portfolioId,
-        address indexed buyer,
-        uint256 amount
-    );
+    event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
-    event PortfolioNFTContractSet(address indexed portfolioNFT);
     event SecondsAgoUpdated(uint32 newSecondsAgo);
 
     constructor(
@@ -76,71 +65,16 @@ contract BiscuitV1 is ERC721, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function updateSecondsAgo(
-        uint32 _newSecondsAgo
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (secondsAgo == _newSecondsAgo) {
-            revert SecondAgoUnchanged(_newSecondsAgo);
-        }
-
-        secondsAgo = _newSecondsAgo;
-        emit SecondsAgoUpdated(_newSecondsAgo);
-    }
-
-    function addPortfolios(
-        TokenShare[][] memory _portfolios
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < _portfolios.length; i++) {
-            addPortfolio(_portfolios[i]);
-        }
-    }
-
-    function addPortfolio(
-        TokenShare[] memory _portfolio
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        portfolioId++;
-        _checkPortfolioTokens(_portfolio);
-        _addPortfolio(portfolioId, _portfolio);
-        emit PortfolioAdded(portfolioId, _portfolio);
-    }
-
-    function removePortfolios(
-        uint256[] memory _portfolioIds
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < _portfolioIds.length; i++) {
-            removePortfolio(_portfolioIds[i]);
-        }
-    }
-
-    function removePortfolio(
-        uint256 _portfolioId
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _checkPortfolioExistence(_portfolioId);
-        delete portfolios[_portfolioId];
-        emit PortfolioRemoved(_portfolioId);
-    }
-
-    function updatePortfolio(
-        uint256 _portfolioId,
-        TokenShare[] memory _newPortfolio
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        removePortfolio(_portfolioId);
-        _addPortfolio(_portfolioId, _newPortfolio);
-        emit PortfolioRemoved(_portfolioId);
-    }
-
     function buyPortfolio(
         uint256 _portfolioId,
         uint256 _amount,
         uint256 _transactionTimeout,
         uint24 _fee
-    ) public withSetupPortfolioNFT {
+    ) public {
         _checkPortfolioExistence(_portfolioId);
         if (_amount == 0) revert AmountZero();
 
-        uint256 transactionTimeout = _transactionTimeout != 0
-            ? _transactionTimeout
-            : DEFAULT_TRANSACTION_TIMEOUT;
+        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         _buyPortfolio(_portfolioId, _amount, transactionTimeout, fee);
@@ -151,17 +85,55 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _tokenId,
         uint256 _transactionTimeout,
         uint24 _fee
-    ) public withSetupPortfolioNFT {
+    ) public {
         if (portfolioNFT.ownerOf(_tokenId) != msg.sender)
             revert SenderDoesNotOwnToken(msg.sender, _tokenId);
 
-        uint256 transactionTimeout = _transactionTimeout != 0
-            ? _transactionTimeout
-            : DEFAULT_TRANSACTION_TIMEOUT;
+        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         _sellPortfolio(_tokenId, transactionTimeout, fee);
         emit PortfolioSold(_tokenId, msg.sender);
+    }
+
+    function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < _portfolios.length; i++) {
+            addPortfolio(_portfolios[i]);
+        }
+    }
+
+    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        portfolioId++;
+        _checkPortfolioTokens(_portfolio);
+        _addPortfolio(portfolioId, _portfolio);
+        emit PortfolioAdded(portfolioId, _portfolio);
+    }
+
+    function removePortfolios(uint256[] memory _portfolioIds) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < _portfolioIds.length; i++) {
+            removePortfolio(_portfolioIds[i]);
+        }
+    }
+
+    function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkPortfolioExistence(_portfolioId);
+        delete portfolios[_portfolioId];
+        emit PortfolioRemoved(_portfolioId);
+    }
+
+    function updatePortfolio(uint256 _portfolioId, TokenShare[] memory _newPortfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        removePortfolio(_portfolioId);
+        _addPortfolio(_portfolioId, _newPortfolio);
+        emit PortfolioRemoved(_portfolioId);
+    }
+
+    function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (secondsAgo == _newSecondsAgo) {
+            revert SecondAgoUnchanged(_newSecondsAgo);
+        }
+
+        secondsAgo = _newSecondsAgo;
+        emit SecondsAgoUpdated(_newSecondsAgo);
     }
 
     function getExpectedMinAmountToken(
@@ -199,22 +171,15 @@ contract BiscuitV1 is ERC721, AccessControl {
         return pair != address(0);
     }
 
-    function getPortfolio(
-        uint256 _portfolioId
-    ) public view returns (TokenShare[] memory) {
+    function getPortfolio(uint256 _portfolioId) public view returns (TokenShare[] memory) {
         return portfolios[_portfolioId];
     }
 
-    function getPortfolioTokenCount(
-        uint256 _portfolioId
-    ) public view returns (uint256) {
+    function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
         return portfolios[_portfolioId].length;
     }
 
-    function _addPortfolio(
-        uint256 _portfolioId,
-        TokenShare[] memory _portfolio
-    ) private {
+    function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
         TokenShare[] storage newPortfolio = portfolios[_portfolioId];
 
         for (uint256 i = 0; i < _portfolio.length; i++) {
