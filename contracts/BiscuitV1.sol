@@ -20,6 +20,7 @@ error IncorrectTotalShares(uint256 totalShares);
 error NotApprovedOrOwner();
 error MixedPaymentNotAllowed();
 error PaymentAmountZero();
+error WithdrawFailed();
 
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
@@ -188,15 +189,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit ServiceFeeUpdated(_newServiceFee);
     }
 
-    function withdrawTokens(address _token, address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        IERC20(_token).safeTransfer(_receiver, _amount);
-    }
-
-    function withdrawAllTokens() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 balance = TOKEN.balanceOf(address(this));
-        TOKEN.safeTransfer(msg.sender, balance);
-    }
-
     function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
         for (uint256 i = 0; i < _portfolios.length; i++) {
             addPortfolio(_portfolios[i]);
@@ -226,6 +218,26 @@ contract BiscuitV1 is ERC721, AccessControl {
         removePortfolio(_portfolioId);
         _addPortfolio(_portfolioId, _newPortfolio);
         emit PortfolioRemoved(_portfolioId);
+    }
+
+    function withdrawTokens(address _token, address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(_token).safeTransfer(_receiver, _amount);
+    }
+
+    function withdrawAllTokens() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = TOKEN.balanceOf(address(this));
+        TOKEN.safeTransfer(msg.sender, balance);
+    }
+
+    function withdrawETH(address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        (bool success, ) = _receiver.call{value: _amount}(new bytes(0));
+        if (!success) revert WithdrawFailed();
+    }
+
+    function withdrawAllETH() public onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = address(this).balance;
+        (bool success, ) = msg.sender.call{value: balance}(new bytes(0));
+        if (!success) revert WithdrawFailed();
     }
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
