@@ -42,6 +42,7 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint24 public constant DEFAULT_POOL_FEE = 3_000;
 
     uint256 serviceFee = 1_00;
+    // Time interval during that price will be taken between current pair
     uint32 public secondsAgo = 2 hours;
 
     uint256 public portfolioId;
@@ -153,6 +154,15 @@ contract BiscuitV1 is ERC721, AccessControl {
 
         serviceFee = _newServiceFee;
         emit ServiceFeeUpdated(_newServiceFee);
+    }
+
+    function withdrawTokens(address _token, address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(_token).safeTransfer(_receiver, _amount);
+    }
+
+    function withdrawAllTokens() public onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = TOKEN.balanceOf(address(this));
+        TOKEN.safeTransfer(msg.sender, balance);
     }
 
     function getExpectedMinAmountToken(
@@ -336,7 +346,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         }
     }
 
-   function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }
