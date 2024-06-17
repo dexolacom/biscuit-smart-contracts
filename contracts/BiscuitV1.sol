@@ -111,6 +111,56 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit PortfolioSold(_tokenId, msg.sender);
     }
 
+    function getExpectedMinAmountToken(
+        address _baseToken,
+        address _quoteToken,
+        uint256 _amountIn,
+        uint24 _poolFee
+    ) public view returns (uint256 amountOutMinimum) {
+        address pool = UNISWAP_FACTORY.getPool(
+            _baseToken,
+            _quoteToken,
+            _poolFee
+        );
+        if (pool == address(0)) revert PoolDoesNotExist();
+
+        (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
+        uint256 amountOut = OracleLibrary.getQuoteAtTick(
+            tick,
+            uint128(_amountIn),
+            _baseToken,
+            _quoteToken
+        );
+
+        amountOutMinimum = (amountOut * SLIPPAGE_MULTIPLIER) / BIPS;
+    }
+
+    function getTokenExists(address _token) public view returns (bool) {
+        address pair = UNISWAP_FACTORY.getPool(
+            _token,
+            address(TOKEN),
+            DEFAULT_POOL_FEE
+        );
+        return pair != address(0);
+    }
+
+    function getPortfolio(uint256 _portfolioId) public view returns (TokenShare[] memory) {
+        return portfolios[_portfolioId];
+    }
+
+    function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
+        return portfolios[_portfolioId].length;
+    }
+
+    
+    function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
+        return purchasedPortfolios[_tokenId];
+    }
+
+    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
+        return purchasedPortfolios[_tokenId].length;
+    }
+
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (secondsAgo == _newSecondsAgo) revert ValueUnchanged();
 
@@ -163,56 +213,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         removePortfolio(_portfolioId);
         _addPortfolio(_portfolioId, _newPortfolio);
         emit PortfolioRemoved(_portfolioId);
-    }
-
-    function getExpectedMinAmountToken(
-        address _baseToken,
-        address _quoteToken,
-        uint256 _amountIn,
-        uint24 _poolFee
-    ) public view returns (uint256 amountOutMinimum) {
-        address pool = UNISWAP_FACTORY.getPool(
-            _baseToken,
-            _quoteToken,
-            _poolFee
-        );
-        if (pool == address(0)) revert PoolDoesNotExist();
-
-        (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
-        uint256 amountOut = OracleLibrary.getQuoteAtTick(
-            tick,
-            uint128(_amountIn),
-            _baseToken,
-            _quoteToken
-        );
-
-        amountOutMinimum = (amountOut * SLIPPAGE_MULTIPLIER) / BIPS;
-    }
-
-    function getTokenExists(address _token) public view returns (bool) {
-        address pair = UNISWAP_FACTORY.getPool(
-            _token,
-            address(TOKEN),
-            DEFAULT_POOL_FEE
-        );
-        return pair != address(0);
-    }
-
-    function getPortfolio(uint256 _portfolioId) public view returns (TokenShare[] memory) {
-        return portfolios[_portfolioId];
-    }
-
-    function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
-        return portfolios[_portfolioId].length;
-    }
-
-    
-    function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
-        return purchasedPortfolios[_tokenId];
-    }
-
-    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
-        return purchasedPortfolios[_tokenId].length;
     }
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
