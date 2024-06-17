@@ -22,6 +22,7 @@ error MixedPaymentNotAllowed();
 error PaymentAmountZero();
 error WithdrawFailed();
 
+// TODO: need to add posibility disable portfolio
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
 
@@ -300,6 +301,8 @@ contract BiscuitV1 is ERC721, AccessControl {
 
             IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
+
+            // TODO: Transfer user token or !ETH
         }
         
         delete purchasedPortfolios[_tokenId];
@@ -330,6 +333,7 @@ contract BiscuitV1 is ERC721, AccessControl {
                 sqrtPriceLimitX96: 0
             });
 
+        // TODO: need to fix bug with during selling
         if (_tokenIn == address(WETH)) {
             amountOut = SWAP_ROUTER.exactInputSingle{value: _amountIn}(params);
         } else {
