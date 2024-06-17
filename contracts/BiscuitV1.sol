@@ -45,7 +45,9 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public portfolioId;
     uint256 public tokenId;
 
+    // This mapping includes existing portfolios
     mapping(uint256 => TokenShare[]) public portfolios;
+    // this mapping contains purchased portfolios
     mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
@@ -150,12 +152,10 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _amountIn,
         uint24 _fee
     ) public view returns (uint256 amountOutMinimum) {
-        uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
-
         address pool = UNISWAP_FACTORY.getPool(
             _baseToken,
             _quoteToken,
-            fee
+            _fee
         );
         if (pool == address(0)) revert PoolDoesNotExist();
 
