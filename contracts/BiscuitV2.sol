@@ -17,7 +17,7 @@ error NotApprovedOrOwner();
 /// @title Biscuit NFT Contract
 /// @notice This contract allows minting and burning of NFTs with custom actions on mint and burn.
 /// @dev Inherits from OpenZeppelin's ERC721 implementation.
-contract Biscuit is ERC721 {
+contract BiscuitV2 is ERC721 {
     /// @notice Parameters required for minting a new token.
     /// @param to The address that will receive the minted token.
     /// @param targets The array of target addresses for executing transactions during minting.
