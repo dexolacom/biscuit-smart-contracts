@@ -252,7 +252,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         }
 
         // Invested amount token that including service fee
-        uint256 investedAmount = _amountPayment * BIPS - serviceFee / BIPS;
+        uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
         for (uint256 i = 0; i < portfolio.length; i++) {
             TokenShare memory portfolioToken = portfolio[i];
 
@@ -288,8 +288,6 @@ contract BiscuitV1 is ERC721, AccessControl {
 
             IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
-
-            // if (_tokenOut == address(WETH)) 
         }
         
         delete purchasedPortfolios[_tokenId];
@@ -309,7 +307,6 @@ contract BiscuitV1 is ERC721, AccessControl {
             _fee
         );
 
-        IERC20(_tokenIn).approve(address(SWAP_ROUTER), _amountIn);
         IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
             .ExactInputSingleParams({
                 tokenIn: _tokenIn,
