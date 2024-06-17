@@ -84,7 +84,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _amount,
         uint256 _transactionTimeout,
         uint24 _poolFee
-    ) public {
+    ) external {
         _checkPortfolioExistence(_portfolioId);
         if (_amount == 0) revert AmountZero();
 
@@ -99,7 +99,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _tokenId,
         uint256 _transactionTimeout,
         uint24 _poolFee
-    ) public {
+    ) external {
         if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) {
             revert NotApprovedOrOwner();
         }
@@ -109,6 +109,29 @@ contract BiscuitV1 is ERC721, AccessControl {
 
         _sellPortfolio(_tokenId, transactionTimeout, poolFee);
         emit PortfolioSold(_tokenId, msg.sender);
+    }
+
+    function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (secondsAgo == _newSecondsAgo) revert ValueUnchanged();
+
+        secondsAgo = _newSecondsAgo;
+        emit SecondsAgoUpdated(_newSecondsAgo);
+    }
+
+    function updateServiceFee(uint32 _newServiceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (serviceFee == _newServiceFee) revert ValueUnchanged();
+
+        serviceFee = _newServiceFee;
+        emit ServiceFeeUpdated(_newServiceFee);
+    }
+
+    function withdrawTokens(address _token, address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(_token).safeTransfer(_receiver, _amount);
+    }
+
+    function withdrawAllTokens() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = TOKEN.balanceOf(address(this));
+        TOKEN.safeTransfer(msg.sender, balance);
     }
 
     function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -140,29 +163,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         removePortfolio(_portfolioId);
         _addPortfolio(_portfolioId, _newPortfolio);
         emit PortfolioRemoved(_portfolioId);
-    }
-
-    function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (secondsAgo == _newSecondsAgo) revert ValueUnchanged();
-
-        secondsAgo = _newSecondsAgo;
-        emit SecondsAgoUpdated(_newSecondsAgo);
-    }
-
-    function updateServiceFee(uint32 _newServiceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (serviceFee == _newServiceFee) revert ValueUnchanged();
-
-        serviceFee = _newServiceFee;
-        emit ServiceFeeUpdated(_newServiceFee);
-    }
-
-    function withdrawTokens(address _token, address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        IERC20(_token).safeTransfer(_receiver, _amount);
-    }
-
-    function withdrawAllTokens() public onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 balance = TOKEN.balanceOf(address(this));
-        TOKEN.safeTransfer(msg.sender, balance);
     }
 
     function getExpectedMinAmountToken(
@@ -214,7 +214,6 @@ contract BiscuitV1 is ERC721, AccessControl {
     function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
         return purchasedPortfolios[_tokenId].length;
     }
-
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
         TokenShare[] storage newPortfolio = portfolios[_portfolioId];
