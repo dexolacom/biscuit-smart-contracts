@@ -11,7 +11,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 
 error NotContract(address account);
-error SecondAgoUnchanged(uint32 value);
+error ValueUnchanged();
 error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
 error PoolDoesNotExist();
@@ -39,15 +39,17 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 15 minutes;
-    uint24 public constant DEFAULT_FEE = 3_000;
+    uint24 public constant DEFAULT_POOL_FEE = 3_000;
 
+    uint256 serviceFee = 1_00;
     uint32 public secondsAgo = 2 hours;
+
     uint256 public portfolioId;
     uint256 public tokenId;
 
     // This mapping includes existing portfolios
     mapping(uint256 => TokenShare[]) public portfolios;
-    // this mapping contains purchased portfolios
+    // This mapping contains purchased portfolios
     mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
@@ -55,7 +57,9 @@ contract BiscuitV1 is ERC721, AccessControl {
     event PortfolioRemoved(uint256 indexed portfolioId);
     event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
+
     event SecondsAgoUpdated(uint32 newSecondsAgo);
+    event ServiceFeeUpdated(uint256 serviceFee);
 
     constructor(
         address _admin,
@@ -78,31 +82,31 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _portfolioId,
         uint256 _amount,
         uint256 _transactionTimeout,
-        uint24 _fee
+        uint24 _poolFee
     ) public {
         _checkPortfolioExistence(_portfolioId);
         if (_amount == 0) revert AmountZero();
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
-        uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
+        uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _buyPortfolio(_portfolioId, _amount, transactionTimeout, fee);
+        _buyPortfolio(_portfolioId, _amount, transactionTimeout, poolFee);
         emit PortfolioPurchased(_portfolioId, msg.sender, _amount);
     }
 
     function sellPortfolio(
         uint256 _tokenId,
         uint256 _transactionTimeout,
-        uint24 _fee
+        uint24 _poolFee
     ) public {
         if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) {
             revert NotApprovedOrOwner();
         }
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
-        uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
+        uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _sellPortfolio(_tokenId, transactionTimeout, fee);
+        _sellPortfolio(_tokenId, transactionTimeout, poolFee);
         emit PortfolioSold(_tokenId, msg.sender);
     }
 
@@ -138,24 +142,29 @@ contract BiscuitV1 is ERC721, AccessControl {
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (secondsAgo == _newSecondsAgo) {
-            revert SecondAgoUnchanged(_newSecondsAgo);
-        }
+        if (secondsAgo == _newSecondsAgo) revert ValueUnchanged();
 
         secondsAgo = _newSecondsAgo;
         emit SecondsAgoUpdated(_newSecondsAgo);
+    }
+
+    function updateServiceFee(uint32 _newServiceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (serviceFee == _newServiceFee) revert ValueUnchanged();
+
+        serviceFee = _newServiceFee;
+        emit ServiceFeeUpdated(_newServiceFee);
     }
 
     function getExpectedMinAmountToken(
         address _baseToken,
         address _quoteToken,
         uint256 _amountIn,
-        uint24 _fee
+        uint24 _poolFee
     ) public view returns (uint256 amountOutMinimum) {
         address pool = UNISWAP_FACTORY.getPool(
             _baseToken,
             _quoteToken,
-            _fee
+            _poolFee
         );
         if (pool == address(0)) revert PoolDoesNotExist();
 
@@ -174,7 +183,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         address pair = UNISWAP_FACTORY.getPool(
             _token,
             address(TOKEN),
-            DEFAULT_FEE
+            DEFAULT_POOL_FEE
         );
         return pair != address(0);
     }
@@ -209,7 +218,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _portfolioId,
         uint256 _amount,
         uint256 _transactionTimeout,
-        uint24 _fee
+        uint24 _poolFee
     ) private {
         TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
         TOKEN.approve(address(SWAP_ROUTER), _amount);
@@ -217,21 +226,24 @@ contract BiscuitV1 is ERC721, AccessControl {
         TokenShare[] memory portfolio = portfolios[_portfolioId];
         TokenAmount[] memory purchasedPortfolio = new TokenAmount[](portfolio.length);
 
+        // Invested amount token that including service fee
+        uint256 investedAmount = _amount * BIPS - serviceFee / BIPS;
+
         for (uint256 i = 0; i < portfolio.length; i++) {
             TokenShare memory portfolioToken = portfolio[i];
-            uint256 tokenAmount = (_amount * portfolioToken.share) / BIPS;
+            uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
             uint256 amountOutMinimum = getExpectedMinAmountToken(
                 address(TOKEN),
                 portfolioToken.token,
-                _amount,
-                _fee
+                tokenAmount,
+                _poolFee
             );
 
             IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
                 .ExactInputSingleParams({
                     tokenIn: address(TOKEN),
                     tokenOut: portfolioToken.token,
-                    fee: _fee,
+                    fee: _poolFee,
                     recipient: address(this),
                     amountIn: tokenAmount,
                     amountOutMinimum: amountOutMinimum,
