@@ -16,11 +16,21 @@ error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
 error PoolDoesNotExist();
 error IncorrectTotalShares(uint256 totalShares);
-error SenderDoesNotOwnToken(address owner, uint256 tokenId);
+error NotApprovedOrOwner();
 error AmountZero();
 
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
+
+    struct TokenShare {
+        address token;
+        uint256 share;
+    }
+
+    struct TokenAmount {
+        address token;
+        uint256 amount;
+    }
 
     IUniswapV3Factory public immutable UNISWAP_FACTORY;
     IV3SwapRouter public immutable SWAP_ROUTER;
@@ -29,17 +39,14 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 1000;
-    uint24 public constant DEFAULT_FEE = 1_000;
+    uint24 public constant DEFAULT_FEE = 3_000;
 
     uint32 public secondsAgo = 2 hours;
     uint256 public portfolioId;
+    uint256 public tokenId;
 
-    struct TokenShare {
-        address token;
-        uint256 share;
-    }
-
-    mapping(uint256 => TokenShare[]) portfolios;
+    mapping(uint256 => TokenShare[]) public portfolios;
+    mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
@@ -53,7 +60,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         address _uniswapFactory,
         address _swapRouter,
         address _token
-    ) {
+    ) ERC721("BiscuitV1", "BSC") {
         _checkIsContract(_uniswapFactory);
         _checkIsContract(_swapRouter);
         _checkIsContract(_token);
@@ -86,8 +93,9 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _fee
     ) public {
-        if (portfolioNFT.ownerOf(_tokenId) != msg.sender)
-            revert SenderDoesNotOwnToken(msg.sender, _tokenId);
+        if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) {
+            revert NotApprovedOrOwner();
+        }
 
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
@@ -145,7 +153,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint24 fee = _fee != 0 ? _fee : DEFAULT_FEE;
 
         address pool = UNISWAP_FACTORY.getPool(
-            address(TOKEN),
+            _baseToken,
             _quoteToken,
             fee
         );
@@ -197,10 +205,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         TOKEN.approve(address(SWAP_ROUTER), _amount);
 
         TokenShare[] memory portfolio = portfolios[_portfolioId];
-        PortfolioNFT.TokenAmount[]
-            memory purchasedPortfolio = new PortfolioNFT.TokenAmount[](
-                portfolio.length
-            );
+        TokenAmount[] memory purchasedPortfolio = new TokenAmount[](portfolio.length);
 
         for (uint256 i = 0; i < portfolio.length; i++) {
             TokenShare memory portfolioToken = portfolio[i];
@@ -225,13 +230,20 @@ contract BiscuitV1 is ERC721, AccessControl {
 
             uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
-            purchasedPortfolio[i] = PortfolioNFT.TokenAmount({
+            purchasedPortfolio[i] = TokenAmount({
                 token: portfolioToken.token,
                 amount: amountOut
             });
         }
 
-        portfolioNFT.mint(msg.sender, purchasedPortfolio);
+        TokenAmount[] storage newPortfolio = purchasedPortfolios[tokenId];
+        for (uint256 i = 0; i < purchasedPortfolio.length; i++) {
+            newPortfolio.push(purchasedPortfolio[i]);
+        }
+
+        tokenId++;
+        purchasedPortfolios[tokenId] = newPortfolio;
+        _mint(msg.sender, tokenId);
     }
 
     function _sellPortfolio(
@@ -239,13 +251,11 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _fee
     ) private {
-        PortfolioNFT.TokenAmount[] memory purchasedPortfolio = portfolioNFT
-            .getPurchasedPortfolio(_tokenId);
+        TokenAmount[] memory purchasedPortfolio = purchasedPortfolios[_tokenId];
 
         for (uint256 i = 0; i < purchasedPortfolio.length; i++) {
-            PortfolioNFT.TokenAmount memory portfolioToken = purchasedPortfolio[
-                i
-            ];
+            TokenAmount memory portfolioToken = purchasedPortfolio[i];
+
             uint256 amountOutMinimum = getExpectedMinAmountToken(
                 portfolioToken.token,
                 address(TOKEN),
@@ -253,10 +263,7 @@ contract BiscuitV1 is ERC721, AccessControl {
                 _fee
             );
 
-            IERC20(portfolioToken.token).approve(
-                address(SWAP_ROUTER),
-                portfolioToken.amount
-            );
+            IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
                 .ExactInputSingleParams({
                     tokenIn: portfolioToken.token,
@@ -270,8 +277,9 @@ contract BiscuitV1 is ERC721, AccessControl {
 
             SWAP_ROUTER.exactInputSingle(params);
         }
-
-        portfolioNFT.burn(_tokenId);
+        
+        delete purchasedPortfolios[_tokenId];
+        _burn(_tokenId);
     }
 
     function _checkIsContract(address _address) private view {
@@ -304,5 +312,9 @@ contract BiscuitV1 is ERC721, AccessControl {
         if (portfolios[_portfolioId].length == 0) {
             revert PortfolioDoesNotExist(_portfolioId);
         }
+    }
+
+   function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
