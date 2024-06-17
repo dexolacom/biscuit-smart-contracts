@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import {IV3SwapRouter} from "@uniswap/swap-router-contracts/contracts/interfaces/IV3SwapRouter.sol";
+import {IPeripheryPayments} from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryPayments.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -17,7 +18,8 @@ error PortfolioDoesNotExist(uint256 portfolioId);
 error PoolDoesNotExist();
 error IncorrectTotalShares(uint256 totalShares);
 error NotApprovedOrOwner();
-error AmountZero();
+error MixedPaymentNotAllowed();
+error PaymentAmountZero();
 
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
@@ -32,9 +34,15 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 amount;
     }
 
+    struct PurchasedPortfolio {
+        bool purchasedWithETH;
+        TokenAmount[] portfolio;
+    }
+
     IUniswapV3Factory public immutable UNISWAP_FACTORY;
     IV3SwapRouter public immutable SWAP_ROUTER;
     IERC20 public immutable TOKEN;
+    IERC20 public immutable WETH;
 
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
@@ -51,12 +59,12 @@ contract BiscuitV1 is ERC721, AccessControl {
     // This mapping includes existing portfolios
     mapping(uint256 => TokenShare[]) public portfolios;
     // This mapping contains purchased portfolios
-    mapping(uint256 => TokenAmount[]) public purchasedPortfolios;
+    mapping(uint256 => PurchasedPortfolio) public purchasedPortfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
-    event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amount);
+    event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amountToken, uint256 amountETH);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
 
     event SecondsAgoUpdated(uint32 newSecondsAgo);
@@ -66,7 +74,8 @@ contract BiscuitV1 is ERC721, AccessControl {
         address _admin,
         address _uniswapFactory,
         address _swapRouter,
-        address _token
+        address _token,
+        address _weth
     ) ERC721("BiscuitV1", "BSC") {
         _checkIsContract(_uniswapFactory);
         _checkIsContract(_swapRouter);
@@ -75,24 +84,27 @@ contract BiscuitV1 is ERC721, AccessControl {
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         TOKEN = IERC20(_token);
+        WETH = IERC20(_weth);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
     function buyPortfolio(
         uint256 _portfolioId,
-        uint256 _amount,
+        uint256 _amountToken,
         uint256 _transactionTimeout,
         uint24 _poolFee
-    ) external {
+    ) external payable {
         _checkPortfolioExistence(_portfolioId);
-        if (_amount == 0) revert AmountZero();
+        if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
+        if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
 
+        address tokenIn = _amountToken > 0 ? address(TOKEN) : address(WETH);
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _buyPortfolio(_portfolioId, _amount, transactionTimeout, poolFee);
-        emit PortfolioPurchased(_portfolioId, msg.sender, _amount);
+        _buyPortfolio(tokenIn, _portfolioId, _amountToken, transactionTimeout, poolFee);
+        emit PortfolioPurchased(_portfolioId, msg.sender, _amountToken, msg.value);
     }
 
     function sellPortfolio(
@@ -104,10 +116,11 @@ contract BiscuitV1 is ERC721, AccessControl {
             revert NotApprovedOrOwner();
         }
 
+        address tokenOut = purchasedPortfolios[_tokenId].purchasedWithETH ? address(TOKEN) : address(WETH);
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _sellPortfolio(_tokenId, transactionTimeout, poolFee);
+        _sellPortfolio(tokenOut, _tokenId, transactionTimeout, poolFee);
         emit PortfolioSold(_tokenId, msg.sender);
     }
 
@@ -153,12 +166,12 @@ contract BiscuitV1 is ERC721, AccessControl {
     }
 
     
-    function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
+    function getPurchasedPortfolio(uint256 _tokenId) public view returns (PurchasedPortfolio memory) {
         return purchasedPortfolios[_tokenId];
     }
 
     function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
-        return purchasedPortfolios[_tokenId].length;
+        return purchasedPortfolios[_tokenId].portfolio.length;
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -168,7 +181,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit SecondsAgoUpdated(_newSecondsAgo);
     }
 
-    function updateServiceFee(uint32 _newServiceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updateServiceFee(uint256 _newServiceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (serviceFee == _newServiceFee) revert ValueUnchanged();
 
         serviceFee = _newServiceFee;
@@ -224,93 +237,95 @@ contract BiscuitV1 is ERC721, AccessControl {
     }
 
     function _buyPortfolio(
+        address _tokenIn,
         uint256 _portfolioId,
-        uint256 _amount,
+        uint256 _amountPayment,
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) private {
-        TOKEN.safeTransferFrom(msg.sender, address(this), _amount);
-        TOKEN.approve(address(SWAP_ROUTER), _amount);
-
         TokenShare[] memory portfolio = portfolios[_portfolioId];
-        TokenAmount[] memory purchasedPortfolio = new TokenAmount[](portfolio.length);
+        TokenAmount[] memory boughtPortfolio = new TokenAmount[](portfolio.length);
+
+        if (_tokenIn == address(TOKEN)) {
+            IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
+            IERC20(_tokenIn).approve(address(SWAP_ROUTER), _amountPayment);
+        }
 
         // Invested amount token that including service fee
-        uint256 investedAmount = _amount * BIPS - serviceFee / BIPS;
-
+        uint256 investedAmount = _amountPayment * BIPS - serviceFee / BIPS;
         for (uint256 i = 0; i < portfolio.length; i++) {
             TokenShare memory portfolioToken = portfolio[i];
+
             uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
-            uint256 amountOutMinimum = getExpectedMinAmountToken(
-                address(TOKEN),
-                portfolioToken.token,
-                tokenAmount,
-                _poolFee
-            );
+            uint256 amountOutToken = _swap(_tokenIn, portfolioToken.token, tokenAmount, _poolFee);
 
-            IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
-                .ExactInputSingleParams({
-                    tokenIn: address(TOKEN),
-                    tokenOut: portfolioToken.token,
-                    fee: _poolFee,
-                    recipient: address(this),
-                    amountIn: tokenAmount,
-                    amountOutMinimum: amountOutMinimum,
-                    sqrtPriceLimitX96: 0
-                });
-
-            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
-
-            purchasedPortfolio[i] = TokenAmount({
+            boughtPortfolio[i] = TokenAmount({
                 token: portfolioToken.token,
-                amount: amountOut
+                amount: amountOutToken
             });
         }
 
-        TokenAmount[] storage newPortfolio = purchasedPortfolios[tokenId];
-        for (uint256 i = 0; i < purchasedPortfolio.length; i++) {
-            newPortfolio.push(purchasedPortfolio[i]);
-        }
-
         tokenId++;
-        purchasedPortfolios[tokenId] = newPortfolio;
         _mint(msg.sender, tokenId);
+
+        PurchasedPortfolio storage purchasedPortfolio = purchasedPortfolios[tokenId];
+        purchasedPortfolio.purchasedWithETH = _tokenIn == address(WETH);
+        for (uint256 i = 0; i < boughtPortfolio.length; i++) {
+            purchasedPortfolio.portfolio.push(boughtPortfolio[i]);
+        }
     }
 
     function _sellPortfolio(
+        address _tokenOut,
         uint256 _tokenId,
         uint256 _transactionTimeout,
         uint24 _fee
     ) private {
-        TokenAmount[] memory purchasedPortfolio = purchasedPortfolios[_tokenId];
+        TokenAmount[] memory portfolio = purchasedPortfolios[_tokenId].portfolio;
 
-        for (uint256 i = 0; i < purchasedPortfolio.length; i++) {
-            TokenAmount memory portfolioToken = purchasedPortfolio[i];
-
-            uint256 amountOutMinimum = getExpectedMinAmountToken(
-                portfolioToken.token,
-                address(TOKEN),
-                portfolioToken.amount,
-                _fee
-            );
+        for (uint256 i = 0; i < portfolio.length; i++) {
+            TokenAmount memory portfolioToken = portfolio[i];
 
             IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
-            IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
-                .ExactInputSingleParams({
-                    tokenIn: portfolioToken.token,
-                    tokenOut: address(TOKEN),
-                    fee: _fee,
-                    recipient: msg.sender,
-                    amountIn: portfolioToken.amount,
-                    amountOutMinimum: amountOutMinimum,
-                    sqrtPriceLimitX96: 0
-                });
+            uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
 
-            SWAP_ROUTER.exactInputSingle(params);
+            // if (_tokenOut == address(WETH)) 
         }
         
         delete purchasedPortfolios[_tokenId];
         _burn(_tokenId);
+    }
+
+    function _swap(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        uint24 _fee
+    ) private returns (uint256 amountOut) {
+        uint256 amountOutMinimum = getExpectedMinAmountToken(
+            _tokenIn,
+            _tokenOut,
+            _amountIn,
+            _fee
+        );
+
+        IERC20(_tokenIn).approve(address(SWAP_ROUTER), _amountIn);
+        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
+            .ExactInputSingleParams({
+                tokenIn: _tokenIn,
+                tokenOut: _tokenOut,
+                fee: _fee,
+                recipient: address(this),
+                amountIn: _amountIn,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: 0
+            });
+
+        if (_tokenIn == address(WETH)) {
+            amountOut = SWAP_ROUTER.exactInputSingle{value: _amountIn}(params);
+        } else {
+            amountOut = SWAP_ROUTER.exactInputSingle(params);
+        }
     }
 
     function _checkIsContract(address _address) private view {
