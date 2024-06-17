@@ -38,7 +38,7 @@ contract BiscuitV1 is ERC721, AccessControl {
 
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
-    uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 1000;
+    uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 15 minutes;
     uint24 public constant DEFAULT_FEE = 3_000;
 
     uint32 public secondsAgo = 2 hours;
@@ -186,6 +186,16 @@ contract BiscuitV1 is ERC721, AccessControl {
     function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
         return portfolios[_portfolioId].length;
     }
+
+    
+    function getPurchasedPortfolio(uint256 _tokenId) public view returns (TokenAmount[] memory) {
+        return purchasedPortfolios[_tokenId];
+    }
+
+    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
+        return purchasedPortfolios[_tokenId].length;
+    }
+
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
         TokenShare[] storage newPortfolio = portfolios[_portfolioId];
