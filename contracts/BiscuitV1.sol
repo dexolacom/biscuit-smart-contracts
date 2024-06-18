@@ -89,9 +89,9 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) external payable {
+        if (address(portfolioManager) == address(0)) revert PortfolioManagerNotSet();
         if (portfolioManager.getPortfolio(_portfolioId).tokens.length == 0) revert PortfolioDoesNotExist();
         if (!portfolioManager.getPortfolio(_portfolioId).enabled) revert PortfolioIsDisabled();
-        if (address(portfolioManager) == address(0)) revert PortfolioManagerNotSet();
         if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
         if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
 
@@ -225,8 +225,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         }
 
         tokenId++;
-        purchasedPortfolios[tokenId].purchasedTokens = purchasedTokens;
-        purchasedPortfolios[tokenId].purchasedWithETH = _tokenIn == address(WETH);
+        _addPurchasedPortfolio(tokenId, _tokenIn, purchasedTokens);
         _mint(msg.sender, tokenId);
     }
 
@@ -287,6 +286,13 @@ contract BiscuitV1 is ERC721, AccessControl {
             });
 
         amountOut = SWAP_ROUTER.exactInputSingle(params);
+    }
+
+    function _addPurchasedPortfolio(uint256 _tokenId, address _tokenIn, PurchasedToken[] memory _purchasedTokens) private {
+        purchasedPortfolios[_tokenId].purchasedWithETH = _tokenIn == address(WETH);
+        for (uint256 i = 0; i < _purchasedTokens.length; i++) {
+            purchasedPortfolios[_tokenId].purchasedTokens.push(_purchasedTokens[i]);
+        }
     }
 
     function _checkIsContract(address _address) private view {
