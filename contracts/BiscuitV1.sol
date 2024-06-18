@@ -10,14 +10,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
+import {PortfolioManager} from "./PortfolioManager.sol";
 import "hardhat/console.sol";
 
 error NotContract(address account);
-error ValueUnchanged();
-error TokenDoesNotExist(address token);
 error PortfolioDoesNotExist(uint256 portfolioId);
+error PortfolioManagerAlreadySet();
+error PortfolioManagerNotSet();
+error ValueUnchanged();
 error PoolDoesNotExist();
-error IncorrectTotalShares(uint256 totalShares);
 error NotApprovedOrOwner();
 error MixedPaymentNotAllowed();
 error PaymentAmountZero();
@@ -26,11 +27,6 @@ error ETHTransferFailed();
 
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
-
-    struct TokenShare {
-        address token;
-        uint256 share;
-    }
 
     struct TokenAmount {
         address token;
@@ -47,6 +43,8 @@ contract BiscuitV1 is ERC721, AccessControl {
     IERC20 public immutable TOKEN;
     IWETH public immutable WETH;
 
+    PortfolioManager public portfolioManager;
+
     uint256 public constant BIPS = 100_00;
     uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 15 minutes;
@@ -59,13 +57,9 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public portfolioId;
     uint256 public tokenId;
 
-    // This mapping includes existing portfolios
-    mapping(uint256 => TokenShare[]) public portfolios;
     mapping(uint256 => PurchasedPortfolio) public purchasedPortfolios;
 
-    event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
-    event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
-    event PortfolioRemoved(uint256 indexed portfolioId);
+    event PortfolioManagerSet(address indexed portfolioManager);
     event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amountToken, uint256 amountETH);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
 
@@ -97,7 +91,8 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) external payable {
-        _checkPortfolioExistence(_portfolioId);
+        if (portfolioManager.getPortfolio(_portfolioId).length == 0) revert PortfolioDoesNotExist(_portfolioId);
+        if (address(portfolioManager) == address(0)) revert PortfolioManagerNotSet();
         if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
         if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
 
@@ -151,23 +146,11 @@ contract BiscuitV1 is ERC721, AccessControl {
         amountOutMinimum = (amountOut * SLIPPAGE_MULTIPLIER) / BIPS;
     }
 
-    function getTokenExists(address _token) public view returns (bool) {
-        address pair = UNISWAP_FACTORY.getPool(
-            _token,
-            address(WETH),
-            DEFAULT_POOL_FEE
-        );
-        return pair != address(0);
+    function setPortfolioManager(address _portfolioManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (address(portfolioManager) != address(0)) revert PortfolioManagerAlreadySet();
+        portfolioManager = PortfolioManager(_portfolioManager);
+        emit PortfolioManagerSet(_portfolioManager);
     }
-
-    function getPortfolio(uint256 _portfolioId) public view returns (TokenShare[] memory) {
-        return portfolios[_portfolioId];
-    }
-
-    function getPortfolioTokenCount(uint256 _portfolioId) public view returns (uint256) {
-        return portfolios[_portfolioId].length;
-    }
-
     
     function getPurchasedPortfolio(uint256 _tokenId) public view returns (PurchasedPortfolio memory) {
         return purchasedPortfolios[_tokenId];
@@ -191,37 +174,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit ServiceFeeUpdated(_newServiceFee);
     }
 
-    function addPortfolios(TokenShare[][] memory _portfolios) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < _portfolios.length; i++) {
-            addPortfolio(_portfolios[i]);
-        }
-    }
-
-    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        portfolioId++;
-        _checkPortfolioTokens(_portfolio);
-        _addPortfolio(portfolioId, _portfolio);
-        emit PortfolioAdded(portfolioId, _portfolio);
-    }
-
-    function removePortfolios(uint256[] memory _portfolioIds) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < _portfolioIds.length; i++) {
-            removePortfolio(_portfolioIds[i]);
-        }
-    }
-
-    function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _checkPortfolioExistence(_portfolioId);
-        delete portfolios[_portfolioId];
-        emit PortfolioRemoved(_portfolioId);
-    }
-
-    function updatePortfolio(uint256 _portfolioId, TokenShare[] memory _newPortfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        removePortfolio(_portfolioId);
-        _addPortfolio(_portfolioId, _newPortfolio);
-        emit PortfolioRemoved(_portfolioId);
-    }
-
     function withdrawTokens(address _token, address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
         IERC20(_token).safeTransfer(_receiver, _amount);
     }
@@ -242,14 +194,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         if (!success) revert WithdrawFailed();
     }
 
-    function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
-        TokenShare[] storage newPortfolio = portfolios[_portfolioId];
-
-        for (uint256 i = 0; i < _portfolio.length; i++) {
-            newPortfolio.push(_portfolio[i]);
-        }
-    }
-
     function _buyPortfolio(
         address _tokenIn,
         uint256 _portfolioId,
@@ -259,7 +203,7 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) private {
         // Invested amount token or ETH that including service fee
         uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
-        TokenShare[] memory portfolio = portfolios[_portfolioId];
+        PortfolioManager.TokenShare[] memory portfolio = portfolioManager.getPortfolio(_portfolioId);
         TokenAmount[] memory boughtPortfolio = new TokenAmount[](portfolio.length);
 
         if (_tokenIn == address(TOKEN)) {
@@ -270,7 +214,7 @@ contract BiscuitV1 is ERC721, AccessControl {
 
         IERC20(_tokenIn).approve(address(SWAP_ROUTER), investedAmount);
         for (uint256 i = 0; i < portfolio.length; i++) {
-            TokenShare memory portfolioToken = portfolio[i];
+            PortfolioManager.TokenShare memory portfolioToken = portfolio[i];
 
             uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
             uint256 amountOutToken = _swap(_tokenIn, portfolioToken.token, tokenAmount, _poolFee);
@@ -347,32 +291,6 @@ contract BiscuitV1 is ERC721, AccessControl {
     function _checkIsContract(address _address) private view {
         if (!(_address.code.length > 0)) {
             revert NotContract(_address);
-        }
-    }
-
-    function _checkPortfolioTokens(
-        TokenShare[] memory _portfolio
-    ) private view {
-        uint256 totalShares = 0;
-
-        for (uint256 i = 0; i < _portfolio.length; i++) {
-            TokenShare memory portfolioToken = _portfolio[i];
-
-            if (!getTokenExists(portfolioToken.token)) {
-                revert TokenDoesNotExist(portfolioToken.token);
-            }
-
-            totalShares += portfolioToken.share;
-        }
-
-        if (totalShares != BIPS) {
-            revert IncorrectTotalShares(totalShares);
-        }
-    }
-
-    function _checkPortfolioExistence(uint256 _portfolioId) private view {
-        if (portfolios[_portfolioId].length == 0) {
-            revert PortfolioDoesNotExist(_portfolioId);
         }
     }
 
