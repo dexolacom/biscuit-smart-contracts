@@ -22,7 +22,6 @@ error MixedPaymentNotAllowed();
 error PaymentAmountZero();
 error WithdrawFailed();
 
-// TODO: need to add posibility disable portfolio
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
 
@@ -60,7 +59,6 @@ contract BiscuitV1 is ERC721, AccessControl {
 
     // This mapping includes existing portfolios
     mapping(uint256 => TokenShare[]) public portfolios;
-    // This mapping contains purchased portfolios
     mapping(uint256 => PurchasedPortfolio) public purchasedPortfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
