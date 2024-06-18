@@ -50,11 +50,9 @@ contract BiscuitV1 is ERC721, AccessControl {
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 15 minutes;
     uint24 public constant DEFAULT_POOL_FEE = 3_000;
 
-    uint256 serviceFee = 1_00;
     // Time interval during that price will be taken between current pair
     uint32 public secondsAgo = 2 hours;
-
-    uint256 public portfolioId;
+    uint256 public serviceFee = 1_00;
     uint256 public tokenId;
 
     mapping(uint256 => PurchasedPortfolio) public purchasedPortfolios;
@@ -98,7 +96,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
 
         address tokenIn = _amountToken > 0 ? address(TOKEN) : address(WETH);
-        uint256 amountPayment = _amountToken > 0 ? _amountToken : msg.value;
+        uint256 amountPayment = tokenIn == address(TOKEN) ? _amountToken : msg.value;
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
@@ -111,9 +109,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) external {
-        if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) {
-            revert NotApprovedOrOwner();
-        }
+        if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) revert NotApprovedOrOwner();
 
         address tokenOut = purchasedPortfolios[_tokenId].purchasedWithETH ? address(WETH) : address(TOKEN);
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
@@ -207,6 +203,8 @@ contract BiscuitV1 is ERC721, AccessControl {
         PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
         PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
 
+        // When buying with a token, all tokens are transferred from user. The investedAmount is taken for the swap
+        // When buying with ETH, we have to convert investedAmount to WETH. Percentage of the service fee stays in ETH
         if (_tokenIn == address(TOKEN)) {
             IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
         } else {
