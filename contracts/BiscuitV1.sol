@@ -118,7 +118,7 @@ contract BiscuitV1 is ERC721, AccessControl {
             revert NotApprovedOrOwner();
         }
 
-        address tokenOut = purchasedPortfolios[_tokenId].purchasedWithETH ? address(TOKEN) : address(WETH);
+        address tokenOut = purchasedPortfolios[_tokenId].purchasedWithETH ? address(WETH) : address(TOKEN);
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
@@ -301,8 +301,8 @@ contract BiscuitV1 is ERC721, AccessControl {
 
             IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
-
-            // TODO: Transfer user token or !ETH
+            // need to wrap WETH to ETH when tokenOut == WETH
+            IERC20(portfolioToken.token).safeTransferFrom(address(this), msg.sender, amountOut);
         }
         
         delete purchasedPortfolios[_tokenId];
