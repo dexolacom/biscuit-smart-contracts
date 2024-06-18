@@ -203,12 +203,12 @@ contract BiscuitV1 is ERC721, AccessControl {
         PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
         PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
 
-        // When buying with a token, all tokens are transferred from user. The investedAmount is taken for the swap
         // When buying with ETH, we have to convert investedAmount to WETH. Percentage of the service fee stays in ETH
-        if (_tokenIn == address(TOKEN)) {
-            IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
-        } else {
+        // When buying with a token, all tokens are transferred from user. The investedAmount is taken for the swap
+        if (_tokenIn == address(WETH)) {
             WETH.deposit{value: investedAmount}();
+        } else {
+            IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
         }
 
         IERC20(_tokenIn).approve(address(SWAP_ROUTER), investedAmount);
@@ -238,18 +238,24 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) private {
         PurchasedPortfolio memory purchasedPortfolio = purchasedPortfolios[_tokenId];
 
+        uint256 totalAmountOut;
         for (uint256 i = 0; i < purchasedPortfolio.purchasedTokens.length; i++) {
-            PurchasedToken memory portfolioToken = purchasedPortfolio.purchasedTokens[i];
+            PurchasedToken memory purchasedToken = purchasedPortfolio.purchasedTokens[i];
 
-            IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
-            uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
-            if (purchasedPortfolio.purchasedWithETH) {
-                WETH.withdraw(amountOut);
-                (bool success, ) = msg.sender.call{value: amountOut}("");
-                if(!success) revert ETHTransferFailed();
-            } else {
-                IERC20(portfolioToken.token).safeTransferFrom(address(this), msg.sender, amountOut);
-            }
+            IERC20(purchasedToken.token).approve(address(SWAP_ROUTER), purchasedToken.amount);
+            uint256 amountOut = _swap(purchasedToken.token, _tokenOut, purchasedToken.amount, _fee);
+
+            totalAmountOut += amountOut;
+        }
+
+        // If portolio was purchased with ETH, we have to convert totalAmountOut to ETH and send user
+        // If portolio was purchased with ETH, we have to  just send totalAmountOut to the user
+        if (purchasedPortfolio.purchasedWithETH) {
+            WETH.withdraw(totalAmountOut);
+            (bool success, ) = msg.sender.call{value: totalAmountOut}("");
+            if (!success) revert ETHTransferFailed();
+        } else {
+            IERC20(_tokenOut).safeTransfer(msg.sender, totalAmountOut);
         }
         
         delete purchasedPortfolios[_tokenId];
