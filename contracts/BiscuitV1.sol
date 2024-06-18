@@ -14,9 +14,10 @@ import {PortfolioManager} from "./PortfolioManager.sol";
 import "hardhat/console.sol";
 
 error NotContract(address account);
-error PortfolioDoesNotExist(uint256 portfolioId);
+error PortfolioDoesNotExist();
 error PortfolioManagerAlreadySet();
 error PortfolioManagerNotSet();
+error PortfolioIsDisabled();
 error ValueUnchanged();
 error PoolDoesNotExist();
 error NotApprovedOrOwner();
@@ -91,7 +92,8 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) external payable {
-        if (portfolioManager.getPortfolio(_portfolioId).length == 0) revert PortfolioDoesNotExist(_portfolioId);
+        if (portfolioManager.getPortfolio(_portfolioId).tokens.length == 0) revert PortfolioDoesNotExist();
+        if (!portfolioManager.getPortfolio(_portfolioId).enabled) revert PortfolioIsDisabled();
         if (address(portfolioManager) == address(0)) revert PortfolioManagerNotSet();
         if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
         if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
@@ -203,8 +205,8 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) private {
         // Invested amount token or ETH that including service fee
         uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
-        PortfolioManager.TokenShare[] memory portfolio = portfolioManager.getPortfolio(_portfolioId);
-        TokenAmount[] memory boughtPortfolio = new TokenAmount[](portfolio.length);
+        PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
+        TokenAmount[] memory boughtPortfolio = new TokenAmount[](portfolioTokens.length);
 
         if (_tokenIn == address(TOKEN)) {
             IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
@@ -213,8 +215,8 @@ contract BiscuitV1 is ERC721, AccessControl {
         }
 
         IERC20(_tokenIn).approve(address(SWAP_ROUTER), investedAmount);
-        for (uint256 i = 0; i < portfolio.length; i++) {
-            PortfolioManager.TokenShare memory portfolioToken = portfolio[i];
+        for (uint256 i = 0; i < portfolioTokens.length; i++) {
+            PortfolioManager.TokenShare memory portfolioToken = portfolioTokens[i];
 
             uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
             uint256 amountOutToken = _swap(_tokenIn, portfolioToken.token, tokenAmount, _poolFee);

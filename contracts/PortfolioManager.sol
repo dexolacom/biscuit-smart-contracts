@@ -7,8 +7,10 @@ import {BiscuitV1} from "./BiscuitV1.sol";
 
 error NotContract(address account);
 error TokenDoesNotExist(address token);
-error PortfolioDoesNotExist(uint256 portfolioId);
 error IncorrectTotalShares(uint256 totalShares);
+error PortfolioDoesNotExist();
+error PortfolioAlreadyEnabled();
+error PortfolioAlreadyDisabled();
 
 contract PortfolioManager is AccessControl {
     bytes32 public constant PORTFOLIO_MANAGER_ROLE = keccak256("PORTFOLIO_MANAGER");
@@ -23,11 +25,18 @@ contract PortfolioManager is AccessControl {
         uint256 share;
     }
 
-    mapping(uint256 => TokenShare[]) public portfolios;
+    struct Portfolio {
+        bool enabled;
+        TokenShare[] tokens;
+    }
+
+    mapping(uint256 => Portfolio) public portfolios;
 
     event PortfolioAdded(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioUpdated(uint256 indexed portfolioId, TokenShare[] portfolioTokens);
     event PortfolioRemoved(uint256 indexed portfolioId);
+    event PortfolioEnabled(uint256 indexed portfolioId);
+    event PortfolioDisabled(uint256 indexed portfolioId);
 
     constructor(address _admin, address _biscuit) {
         _checkIsContract(_biscuit);
@@ -57,12 +66,28 @@ contract PortfolioManager is AccessControl {
     }
 
     function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (portfolios[_portfolioId].length == 0) {
-            revert PortfolioDoesNotExist(_portfolioId);
-        }
+        if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
+
         delete portfolios[_portfolioId];
         emit PortfolioRemoved(_portfolioId);
     }
+
+    function enablePortfolio(uint256 _portfolioId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
+        if (portfolios[_portfolioId].enabled) revert PortfolioAlreadyEnabled();
+
+        portfolios[_portfolioId].enabled = true;
+        emit PortfolioEnabled(_portfolioId);
+    }
+
+    function disablePortfolio(uint256 _portfolioId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
+        if (!portfolios[_portfolioId].enabled) revert PortfolioAlreadyDisabled();
+
+        portfolios[_portfolioId].enabled = false;
+        emit PortfolioDisabled(_portfolioId);
+    }
+
 
     function getTokenExists(address _token) public view returns (bool) {
         IUniswapV3Factory factory = BISCUIT.UNISWAP_FACTORY(); 
@@ -75,18 +100,18 @@ contract PortfolioManager is AccessControl {
         return pairToToken != address(0) || pairToWETH != address(0);
     }
 
-    function getPortfolio(uint256 _portfolioId) external view returns (TokenShare[] memory) {
+    function getPortfolio(uint256 _portfolioId) external view returns (Portfolio memory) {
         return portfolios[_portfolioId];
     }
 
     function getPortfolioTokenCount(uint256 _portfolioId) external view returns (uint256) {
-        return portfolios[_portfolioId].length;
+        return portfolios[_portfolioId].tokens.length;
     }
 
     function _addPortfolio(uint256 _portfolioId, TokenShare[] memory _portfolio) private {
-        TokenShare[] storage newPortfolio = portfolios[_portfolioId];
+        portfolios[_portfolioId].enabled = true;
         for (uint256 i = 0; i < _portfolio.length; i++) {
-            newPortfolio.push(_portfolio[i]);
+            portfolios[_portfolioId].tokens.push(_portfolio[i]);
         }
     }
 
