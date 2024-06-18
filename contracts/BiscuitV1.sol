@@ -11,7 +11,6 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 import {PortfolioManager} from "./PortfolioManager.sol";
-import "hardhat/console.sol";
 
 error NotContract(address account);
 error PortfolioDoesNotExist();
@@ -29,14 +28,14 @@ error ETHTransferFailed();
 contract BiscuitV1 is ERC721, AccessControl {
     using SafeERC20 for IERC20;
 
-    struct TokenAmount {
+    struct PurchasedToken {
         address token;
         uint256 amount;
     }
 
     struct PurchasedPortfolio {
         bool purchasedWithETH;
-        TokenAmount[] portfolio;
+        PurchasedToken[] purchasedTokens;
     }
 
     IUniswapV3Factory public immutable UNISWAP_FACTORY;
@@ -159,7 +158,7 @@ contract BiscuitV1 is ERC721, AccessControl {
     }
 
     function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
-        return purchasedPortfolios[_tokenId].portfolio.length;
+        return purchasedPortfolios[_tokenId].purchasedTokens.length;
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -206,7 +205,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         // Invested amount token or ETH that including service fee
         uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
         PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
-        TokenAmount[] memory boughtPortfolio = new TokenAmount[](portfolioTokens.length);
+        PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
 
         if (_tokenIn == address(TOKEN)) {
             IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
@@ -221,20 +220,16 @@ contract BiscuitV1 is ERC721, AccessControl {
             uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
             uint256 amountOutToken = _swap(_tokenIn, portfolioToken.token, tokenAmount, _poolFee);
 
-            boughtPortfolio[i] = TokenAmount({
+            purchasedTokens[i] = PurchasedToken({
                 token: portfolioToken.token,
                 amount: amountOutToken
             });
         }
 
         tokenId++;
+        purchasedPortfolios[tokenId].purchasedTokens = purchasedTokens;
+        purchasedPortfolios[tokenId].purchasedWithETH = _tokenIn == address(WETH);
         _mint(msg.sender, tokenId);
-
-        PurchasedPortfolio storage purchasedPortfolio = purchasedPortfolios[tokenId];
-        purchasedPortfolio.purchasedWithETH = _tokenIn == address(WETH);
-        for (uint256 i = 0; i < boughtPortfolio.length; i++) {
-            purchasedPortfolio.portfolio.push(boughtPortfolio[i]);
-        }
     }
 
     function _sellPortfolio(
@@ -245,8 +240,8 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) private {
         PurchasedPortfolio memory purchasedPortfolio = purchasedPortfolios[_tokenId];
 
-        for (uint256 i = 0; i < purchasedPortfolio.portfolio.length; i++) {
-            TokenAmount memory portfolioToken = purchasedPortfolio.portfolio[i];
+        for (uint256 i = 0; i < purchasedPortfolio.purchasedTokens.length; i++) {
+            PurchasedToken memory portfolioToken = purchasedPortfolio.purchasedTokens[i];
 
             IERC20(portfolioToken.token).approve(address(SWAP_ROUTER), portfolioToken.amount);
             uint256 amountOut = _swap(portfolioToken.token, _tokenOut, portfolioToken.amount, _fee);
