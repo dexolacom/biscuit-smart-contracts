@@ -46,33 +46,33 @@ contract PortfolioManager is AccessControl {
         _grantRole(PORTFOLIO_MANAGER_ROLE, _admin);
     }
 
-    function addPortfolios(TokenShare[][] memory _portfolios) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolios(TokenShare[][] memory _portfolios) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
         for (uint256 i = 0; i < _portfolios.length; i++) {
             addPortfolio(_portfolios[i]);
         }
     }
 
-    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(PORTFOLIO_MANAGER_ROLE) {
         portfolioId++;
         _checkPortfolioTokens(_portfolio);
         _addPortfolio(portfolioId, _portfolio);
         emit PortfolioAdded(portfolioId, _portfolio);
     }
 
-    function removePortfolios(uint256[] memory _portfolioIds) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removePortfolios(uint256[] memory _portfolioIds) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
         for (uint256 i = 0; i < _portfolioIds.length; i++) {
             removePortfolio(_portfolioIds[i]);
         }
     }
 
-    function removePortfolio(uint256 _portfolioId) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removePortfolio(uint256 _portfolioId) public onlyRole(PORTFOLIO_MANAGER_ROLE) {
         if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
 
         delete portfolios[_portfolioId];
         emit PortfolioRemoved(_portfolioId);
     }
 
-    function enablePortfolio(uint256 _portfolioId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function enablePortfolio(uint256 _portfolioId) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
         if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
         if (portfolios[_portfolioId].enabled) revert PortfolioAlreadyEnabled();
 
@@ -80,7 +80,7 @@ contract PortfolioManager is AccessControl {
         emit PortfolioEnabled(_portfolioId);
     }
 
-    function disablePortfolio(uint256 _portfolioId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function disablePortfolio(uint256 _portfolioId) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
         if (portfolios[_portfolioId].tokens.length == 0) revert PortfolioDoesNotExist();
         if (!portfolios[_portfolioId].enabled) revert PortfolioAlreadyDisabled();
 
@@ -115,10 +115,10 @@ contract PortfolioManager is AccessControl {
         }
     }
 
-    function _checkPortfolioTokens(TokenShare[] memory _portfolio) private view {
+    function _checkPortfolioTokens(TokenShare[] memory _tokens) private view {
         uint256 totalShares = 0;
-        for (uint256 i = 0; i < _portfolio.length; i++) {
-            TokenShare memory portfolioToken = _portfolio[i];
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            TokenShare memory portfolioToken = _tokens[i];
             if (!getTokenExists(portfolioToken.token)) {
                 revert TokenDoesNotExist(portfolioToken.token);
             }
