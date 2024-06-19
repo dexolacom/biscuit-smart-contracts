@@ -10,7 +10,7 @@ const config: HardhatUserConfig = {
         hardhat: {
             forking: {
                 url: ETH_SEPOLIA_TESTNET_URL || "",
-                blockNumber: 6133134,
+                blockNumber: 6142183,
                 enabled: true
             },
         },
