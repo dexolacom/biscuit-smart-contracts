@@ -198,6 +198,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) private {
+        // In _amountPayment can be amoumt ether or token
         // Invested amount token or ETH that including service fee
         uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
         PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
@@ -248,7 +249,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         }
 
         // If portolio was purchased with ETH, we have to convert totalAmountOut to ETH and send user
-        // If portolio was purchased with ETH, we have to  just send totalAmountOut to the user
+        // If portolio was purchased with token, we have to  just send totalAmountOut to the user
         if (purchasedPortfolio.purchasedWithETH) {
             WETH.withdraw(totalAmountOut);
             (bool success, ) = msg.sender.call{value: totalAmountOut}("");
