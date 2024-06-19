@@ -9,7 +9,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {OracleLibrary} from "./libraries/OracleLibrary.sol";
+import {SwapLibrary} from "./libraries/SwapLibrary.sol";
+
 import {PortfolioManager} from "./PortfolioManager.sol";
 
 error NotContract(address account);
@@ -119,30 +120,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit PortfolioSold(_tokenId, msg.sender);
     }
 
-    function getExpectedMinAmountToken(
-        address _baseToken,
-        address _quoteToken,
-        uint256 _amountIn,
-        uint24 _poolFee
-    ) public view returns (uint256 amountOutMinimum) {
-        address pool = UNISWAP_FACTORY.getPool(
-            _baseToken,
-            _quoteToken,
-            _poolFee
-        );
-        if (pool == address(0)) revert PoolDoesNotExist();
-
-        (int24 tick, ) = OracleLibrary.consult(pool, secondsAgo);
-        uint256 amountOut = OracleLibrary.getQuoteAtTick(
-            tick,
-            uint128(_amountIn),
-            _baseToken,
-            _quoteToken
-        );
-
-        amountOutMinimum = (amountOut * SLIPPAGE_MULTIPLIER) / BIPS;
-    }
-
     function setPortfolioManager(address _portfolioManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (address(portfolioManager) != address(0)) revert PortfolioManagerAlreadySet();
         portfolioManager = PortfolioManager(_portfolioManager);
@@ -217,7 +194,7 @@ contract BiscuitV1 is ERC721, AccessControl {
             PortfolioManager.TokenShare memory portfolioToken = portfolioTokens[i];
 
             uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
-            uint256 amountOutToken = _swap(_tokenIn, portfolioToken.token, tokenAmount, _poolFee);
+            uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, _poolFee);
 
             purchasedTokens[i] = PurchasedToken({
                 token: portfolioToken.token,
@@ -243,7 +220,7 @@ contract BiscuitV1 is ERC721, AccessControl {
             PurchasedToken memory purchasedToken = purchasedPortfolio.purchasedTokens[i];
 
             IERC20(purchasedToken.token).approve(address(SWAP_ROUTER), purchasedToken.amount);
-            uint256 amountOut = _swap(purchasedToken.token, _tokenOut, purchasedToken.amount, _fee);
+            uint256 amountOut = SwapLibrary.swap(BiscuitV1(this), purchasedToken.token, _tokenOut, purchasedToken.amount, _fee);
 
             totalAmountOut += amountOut;
         }
@@ -262,32 +239,6 @@ contract BiscuitV1 is ERC721, AccessControl {
         _burn(_tokenId);
     }
 
-    function _swap(
-        address _tokenIn,
-        address _tokenOut,
-        uint256 _amountIn,
-        uint24 _fee
-    ) private returns (uint256 amountOut) {
-        uint256 amountOutMinimum = getExpectedMinAmountToken(
-            _tokenIn,
-            _tokenOut,
-            _amountIn,
-            _fee
-        );
-
-        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
-            .ExactInputSingleParams({
-                tokenIn: _tokenIn,
-                tokenOut: _tokenOut,
-                fee: _fee,
-                recipient: address(this),
-                amountIn: _amountIn,
-                amountOutMinimum: amountOutMinimum,
-                sqrtPriceLimitX96: 0
-            });
-
-        amountOut = SWAP_ROUTER.exactInputSingle(params);
-    }
 
     function _addPurchasedPortfolio(uint256 _tokenId, address _tokenIn, PurchasedToken[] memory _purchasedTokens) private {
         purchasedPortfolios[_tokenId].purchasedWithETH = _tokenIn == address(WETH);
