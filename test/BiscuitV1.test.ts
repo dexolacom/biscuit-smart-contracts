@@ -83,7 +83,7 @@ describe("Biscuit", function () {
 
         await usdtToken.mint(amountUSDT);
         await usdtToken.approve(biscuitV1.target, amountUSDT);
-        await biscuitV1.buyPortfolio(1, amountUSDT, 0, 0);
+        await biscuitV1.buyPortfolioERC20(1, amountUSDT, 0, 0);
 
         expect(await biscuitV1.balanceOf(owner.address)).to.eq(1);
         expect(await usdtToken.balanceOf(owner.address)).to.eq(0);
@@ -109,7 +109,7 @@ describe("Biscuit", function () {
         const serviceFee = ethers.parseUnits("0.001", 18);
         const oneToken = ethers.parseUnits("1", 18);
 
-        await biscuitV1.buyPortfolio(1, 0, 0, 0, { value: amountETH });
+        await biscuitV1.buyPortfolioETH(1, 0, 0, { value: amountETH });
         const ethBalanceBuyerAfterPurchased = await ethers.provider.getBalance(owner.address); 
         expect(await biscuitV1.balanceOf(owner.address)).to.eq(1);
         expect(await ethers.provider.getBalance(biscuitV1.target)).to.eq(serviceFee);

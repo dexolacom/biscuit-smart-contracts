@@ -113,7 +113,7 @@ contract PortfolioManager is AccessControl {
     }
 
     function _checkPortfolioTokens(TokenShare[] memory _tokens) private view {
-        uint256 maxBips = BISCUIT.MAX_BIPS();
+        uint256 MAX_BIPS = BISCUIT.MAX_BIPS();
 
         uint256 totalShares = 0;
         for (uint256 i = 0; i < _tokens.length; i++) {
@@ -123,7 +123,7 @@ contract PortfolioManager is AccessControl {
             }
             totalShares += portfolioToken.share;
         }
-        if (totalShares != maxBips) {
+        if (totalShares != MAX_BIPS) {
             revert IncorrectTotalShares(totalShares);
         }
     }

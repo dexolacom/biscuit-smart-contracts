@@ -85,24 +85,21 @@ contract BiscuitV1 is ERC721, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
-    function buyPortfolio(
+    function buyPortfolioERC20(
         uint256 _portfolioId,
         uint256 _amountToken,
         uint256 _transactionTimeout,
         uint24 _poolFee
+    ) external {
+        _buyPortfolio(address(PURCHASE_TOKEN), _portfolioId, _amountToken, _transactionTimeout, _poolFee);
+    }
+
+    function buyPortfolioETH(
+        uint256 _portfolioId,
+        uint256 _transactionTimeout,
+        uint24 _poolFee
     ) external payable {
-        if (address(portfolioManager) == address(0)) revert PortfolioManagerNotSet();
-        if (portfolioManager.getPortfolio(_portfolioId).tokens.length == 0) revert PortfolioDoesNotExist();
-        if (!portfolioManager.getPortfolio(_portfolioId).enabled) revert PortfolioIsDisabled();
-        if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
-        if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
-
-        address tokenIn = _amountToken > 0 ? address(PURCHASE_TOKEN) : address(WETH);
-        uint256 amountPayment = tokenIn == address(PURCHASE_TOKEN) ? _amountToken : msg.value;
-        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
-        uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
-
-        _buyPortfolio(tokenIn, _portfolioId, amountPayment, transactionTimeout, poolFee);
+        _buyPortfolio(address(WETH), _portfolioId, msg.value, _transactionTimeout, _poolFee);
     }
 
     function sellPortfolio(
@@ -113,10 +110,34 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) external {
         if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) revert NotApprovedOrOwner();
 
+        PurchasedPortfolio memory purchasedPortfolio = purchasedPortfolios[_tokenId];
+
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _sellPortfolio(_tokenOut, _tokenId, transactionTimeout, poolFee);
+        uint256 totalAmountOut;
+        for (uint256 i = 0; i < purchasedPortfolio.purchasedTokens.length; i++) {
+            PurchasedToken memory purchasedToken = purchasedPortfolio.purchasedTokens[i];
+
+            IERC20(purchasedToken.token).approve(address(SWAP_ROUTER), purchasedToken.amount);
+            uint256 amountOut = SwapLibrary.swap(BiscuitV1(this), purchasedToken.token, _tokenOut, purchasedToken.amount, poolFee);
+
+            totalAmountOut += amountOut;
+        }
+
+        // If user want to sell portolio for ETH, we have to convert totalAmountOut to ETH and send user
+        // If user want to sell portolio for token, we have to just send totalAmountOut to the user
+        if (_tokenOut == address(WETH)) {
+            WETH.withdraw(totalAmountOut);
+            (bool success, ) = msg.sender.call{value: totalAmountOut}("");
+            if (!success) revert ETHTransferFailed();
+        } else {
+            IERC20(_tokenOut).safeTransfer(msg.sender, totalAmountOut);
+        }
+        
+        _burn(_tokenId);
+        delete purchasedPortfolios[_tokenId];
+        emit PortfolioSold(_tokenId, msg.sender);
     }
 
     function setPortfolioManager(address _portfolioManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -177,11 +198,14 @@ contract BiscuitV1 is ERC721, AccessControl {
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) private {
-        // In _amountPayment can be amoumt ether or token
+        PortfolioManager.Portfolio memory portfolio = portfolioManager.getPortfolio(_portfolioId);
+        
+        if (_amountPayment == 0) revert PaymentAmountZero();
+        if (portfolio.tokens.length == 0) revert PortfolioDoesNotExist();
+        if (!portfolio.enabled) revert PortfolioIsDisabled();
+
         // Invested amount token or ETH that including service fee
         uint256 investedAmount = _amountPayment * (MAX_BIPS - serviceFee) / MAX_BIPS;
-        PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
-        PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
 
         // When buying with ETH, we have to convert investedAmount to WETH. Percentage of the service fee stays in ETH
         // When buying with a token, all tokens are transferred from user. The investedAmount is taken for the swap
@@ -191,64 +215,39 @@ contract BiscuitV1 is ERC721, AccessControl {
             IERC20(_tokenIn).safeTransferFrom(msg.sender, address(this), _amountPayment);
         }
 
-        IERC20(_tokenIn).approve(address(SWAP_ROUTER), investedAmount);
+        nextTokenId++;
+        _mint(msg.sender, nextTokenId);
+        _purchasePortfolioTokens(_tokenIn, investedAmount, _transactionTimeout, _poolFee, portfolio);
+        emit PortfolioPurchased(_portfolioId, msg.sender, _amountPayment, msg.value);
+    }
+
+    function _purchasePortfolioTokens(
+        address _tokenIn,
+        uint256 _investedAmount,
+        uint256 _transactionTimeout,
+        uint24 _poolFee,
+        PortfolioManager.Portfolio memory portfolio
+    ) private {
+        uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
+        uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
+
+        PortfolioManager.TokenShare[] memory portfolioTokens = portfolio.tokens;
+        PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
+
+        IERC20(_tokenIn).approve(address(SWAP_ROUTER), _investedAmount);
         for (uint256 i = 0; i < portfolioTokens.length; i++) {
             PortfolioManager.TokenShare memory portfolioToken = portfolioTokens[i];
 
-            uint256 tokenAmount = (investedAmount * portfolioToken.share) / MAX_BIPS;
-            uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, _poolFee);
+            uint256 tokenAmount = (_investedAmount * portfolioToken.share) / MAX_BIPS;
+            uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, poolFee);
 
             purchasedTokens[i] = PurchasedToken({
                 token: portfolioToken.token,
                 amount: amountOutToken
             });
+            purchasedPortfolios[nextTokenId].purchasedTokens.push(purchasedTokens[i]);
         }
-
-        nextTokenId++;
-        _addPurchasedPortfolio(nextTokenId, _tokenIn, purchasedTokens);
-        _mint(msg.sender, nextTokenId);
-        emit PortfolioPurchased(_portfolioId, msg.sender, _amountPayment, msg.value);
-    }
-
-    function _sellPortfolio(
-        address _tokenOut,
-        uint256 _tokenId,
-        uint256 _transactionTimeout,
-        uint24 _fee
-    ) private {
-        PurchasedPortfolio memory purchasedPortfolio = purchasedPortfolios[_tokenId];
-
-        uint256 totalAmountOut;
-        for (uint256 i = 0; i < purchasedPortfolio.purchasedTokens.length; i++) {
-            PurchasedToken memory purchasedToken = purchasedPortfolio.purchasedTokens[i];
-
-            IERC20(purchasedToken.token).approve(address(SWAP_ROUTER), purchasedToken.amount);
-            uint256 amountOut = SwapLibrary.swap(BiscuitV1(this), purchasedToken.token, _tokenOut, purchasedToken.amount, _fee);
-
-            totalAmountOut += amountOut;
-        }
-
-        // If portolio was purchased with ETH, we have to convert totalAmountOut to ETH and send user
-        // If portolio was purchased with token, we have to  just send totalAmountOut to the user
-        if (purchasedPortfolio.purchasedWithETH) {
-            WETH.withdraw(totalAmountOut);
-            (bool success, ) = msg.sender.call{value: totalAmountOut}("");
-            if (!success) revert ETHTransferFailed();
-        } else {
-            IERC20(_tokenOut).safeTransfer(msg.sender, totalAmountOut);
-        }
-        
-        delete purchasedPortfolios[_tokenId];
-        _burn(_tokenId);
-        emit PortfolioSold(_tokenId, msg.sender);
-    }
-
-
-    function _addPurchasedPortfolio(uint256 _tokenId, address _tokenIn, PurchasedToken[] memory _purchasedTokens) private {
-        purchasedPortfolios[_tokenId].purchasedWithETH = _tokenIn == address(WETH);
-        for (uint256 i = 0; i < _purchasedTokens.length; i++) {
-            purchasedPortfolios[_tokenId].purchasedTokens.push(_purchasedTokens[i]);
-        }
+        purchasedPortfolios[nextTokenId].purchasedWithETH = _tokenIn == address(WETH);
     }
 
     function _checkIsContract(address _address) private view {
