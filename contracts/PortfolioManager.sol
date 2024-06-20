@@ -17,8 +17,7 @@ contract PortfolioManager is AccessControl {
 
     BiscuitV1 public immutable BISCUIT;
 
-    uint256 public constant BIPS = 100_00;
-    uint256 public portfolioId;
+    uint256 public nextPortfolioId;
 
     struct TokenShare {
         address token;
@@ -53,10 +52,10 @@ contract PortfolioManager is AccessControl {
     }
 
     function addPortfolio(TokenShare[] memory _portfolio) public onlyRole(PORTFOLIO_MANAGER_ROLE) {
-        portfolioId++;
+        nextPortfolioId++;
         _checkPortfolioTokens(_portfolio);
-        _addPortfolio(portfolioId, _portfolio);
-        emit PortfolioAdded(portfolioId, _portfolio);
+        _addPortfolio(nextPortfolioId, _portfolio);
+        emit PortfolioAdded(nextPortfolioId, _portfolio);
     }
 
     function removePortfolios(uint256[] memory _portfolioIds) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
@@ -89,15 +88,13 @@ contract PortfolioManager is AccessControl {
     }
 
 
-    function getTokenExists(address _token) public view returns (bool) {
+    function checkPoolsToTokenExist(address _token) public view returns (bool) {
         IUniswapV3Factory factory = BISCUIT.UNISWAP_FACTORY(); 
-        address token = address(BISCUIT.TOKEN());
-        address weth = address(BISCUIT.WETH());
+        address token = address(BISCUIT.PURCHASE_TOKEN());
         uint24 poolFee = BISCUIT.DEFAULT_POOL_FEE();
 
-        address pairToToken = factory.getPool(token, _token, poolFee); 
-        address pairToWETH = factory.getPool(weth, _token, poolFee); 
-        return pairToToken != address(0) || pairToWETH != address(0);
+        address pool = factory.getPool(token, _token, poolFee); 
+        return pool != address(0);
     }
 
     function getPortfolio(uint256 _portfolioId) external view returns (Portfolio memory) {
@@ -116,15 +113,17 @@ contract PortfolioManager is AccessControl {
     }
 
     function _checkPortfolioTokens(TokenShare[] memory _tokens) private view {
+        uint256 maxBips = BISCUIT.MAX_BIPS();
+
         uint256 totalShares = 0;
         for (uint256 i = 0; i < _tokens.length; i++) {
             TokenShare memory portfolioToken = _tokens[i];
-            if (!getTokenExists(portfolioToken.token)) {
+            if (!checkPoolsToTokenExist(portfolioToken.token)) {
                 revert TokenDoesNotExist(portfolioToken.token);
             }
             totalShares += portfolioToken.share;
         }
-        if (totalShares != BIPS) {
+        if (totalShares != maxBips) {
             revert IncorrectTotalShares(totalShares);
         }
     }

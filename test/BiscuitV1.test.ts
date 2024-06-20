@@ -76,7 +76,7 @@ describe("Biscuit", function () {
     });
 
 
-    it("Should correct buy and sell portfolio for ETH", async function () {
+    it("Should correct buy and sell portfolio for USDT", async function () {
         const amountUSDT = ethers.parseUnits("100", 6);
         const oneToken = ethers.parseUnits("1", 18);
         const serviceFee = ethers.parseUnits("1", 6);
@@ -93,7 +93,7 @@ describe("Biscuit", function () {
         expect(await pepeToken.balanceOf(biscuitV1.target)).to.greaterThan(oneToken);
         expect(await shibaToken.balanceOf(biscuitV1.target)).to.greaterThan(oneToken);
     
-        await biscuitV1.sellPortfolio(1, 0, 0);
+        await biscuitV1.sellPortfolio(usdtToken.target, 1, 0, 0);
 
         expect(await biscuitV1.balanceOf(owner.address)).to.eq(0);
         expect(await usdtToken.balanceOf(owner.address)).to.eq(98406929); // equal 98 +- since service fee + default fee
@@ -118,7 +118,7 @@ describe("Biscuit", function () {
         expect(await pepeToken.balanceOf(biscuitV1.target)).to.greaterThan(oneToken);
         expect(await shibaToken.balanceOf(biscuitV1.target)).to.greaterThan(oneToken);
 
-        await biscuitV1.sellPortfolio(1, 0, 0);
+        await biscuitV1.sellPortfolio(wethToken.target, 1, 0, 0);
 
         expect(await biscuitV1.balanceOf(owner.address)).to.eq(0);
         expect(await ethers.provider.getBalance(owner.address)).to.greaterThan(ethBalanceBuyerAfterPurchased);

@@ -15,13 +15,14 @@ import {PortfolioManager} from "./PortfolioManager.sol";
 
 error NotContract(address account);
 error PortfolioDoesNotExist();
-error PortfolioManagerAlreadySet();
+error PortfolioManagerIsZeroAddrress();
 error PortfolioManagerNotSet();
 error PortfolioIsDisabled();
 error ValueUnchanged();
 error PoolDoesNotExist();
 error NotApprovedOrOwner();
 error MixedPaymentNotAllowed();
+error SecondsAgoTooSmall();
 error PaymentAmountZero();
 error WithdrawFailed();
 error ETHTransferFailed();
@@ -41,24 +42,24 @@ contract BiscuitV1 is ERC721, AccessControl {
 
     IUniswapV3Factory public immutable UNISWAP_FACTORY;
     IV3SwapRouter public immutable SWAP_ROUTER;
-    IERC20 public immutable TOKEN;
+    IERC20 public immutable PURCHASE_TOKEN;
     IWETH public immutable WETH;
 
     PortfolioManager public portfolioManager;
 
-    uint256 public constant BIPS = 100_00;
-    uint256 public constant SLIPPAGE_MULTIPLIER = BIPS - 5_00;
+    uint256 public constant MAX_BIPS = 100_00;
+    uint256 public constant SLIPPAGE_MULTIPLIER = MAX_BIPS - 5_00;
     uint256 public constant DEFAULT_TRANSACTION_TIMEOUT = 15 minutes;
     uint24 public constant DEFAULT_POOL_FEE = 3_000;
 
     // Time interval during that price will be taken between current pair
     uint32 public secondsAgo = 2 hours;
     uint256 public serviceFee = 1_00;
-    uint256 public tokenId;
+    uint256 public nextTokenId;
 
     mapping(uint256 => PurchasedPortfolio) public purchasedPortfolios;
 
-    event PortfolioManagerSet(address indexed portfolioManager);
+    event PortfolioManagerUpdated(address indexed portfolioManager);
     event PortfolioPurchased(uint256 indexed portfolioId, address indexed buyer, uint256 amountToken, uint256 amountETH);
     event PortfolioSold(uint256 indexed tokenId, address indexed seller);
 
@@ -69,16 +70,16 @@ contract BiscuitV1 is ERC721, AccessControl {
         address _admin,
         address _uniswapFactory,
         address _swapRouter,
-        address _token,
+        address _purchaseToken,
         address _weth
     ) ERC721("BiscuitV1", "BSC") {
         _checkIsContract(_uniswapFactory);
         _checkIsContract(_swapRouter);
-        _checkIsContract(_token);
+        _checkIsContract(_purchaseToken);
 
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
-        TOKEN = IERC20(_token);
+        PURCHASE_TOKEN = IERC20(_purchaseToken);
         WETH = IWETH(_weth);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -96,45 +97,38 @@ contract BiscuitV1 is ERC721, AccessControl {
         if (msg.value > 0 && _amountToken > 0) revert MixedPaymentNotAllowed();
         if (msg.value == 0 && _amountToken == 0) revert PaymentAmountZero();
 
-        address tokenIn = _amountToken > 0 ? address(TOKEN) : address(WETH);
-        uint256 amountPayment = tokenIn == address(TOKEN) ? _amountToken : msg.value;
+        address tokenIn = _amountToken > 0 ? address(PURCHASE_TOKEN) : address(WETH);
+        uint256 amountPayment = tokenIn == address(PURCHASE_TOKEN) ? _amountToken : msg.value;
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
         _buyPortfolio(tokenIn, _portfolioId, amountPayment, transactionTimeout, poolFee);
-        emit PortfolioPurchased(_portfolioId, msg.sender, _amountToken, msg.value);
     }
 
     function sellPortfolio(
+        address _tokenOut,
         uint256 _tokenId,
         uint256 _transactionTimeout,
         uint24 _poolFee
     ) external {
         if (!_isAuthorized(ownerOf(_tokenId), msg.sender, _tokenId)) revert NotApprovedOrOwner();
 
-        address tokenOut = purchasedPortfolios[_tokenId].purchasedWithETH ? address(WETH) : address(TOKEN);
         uint256 transactionTimeout = _transactionTimeout != 0 ? _transactionTimeout : DEFAULT_TRANSACTION_TIMEOUT;
         uint24 poolFee = _poolFee != 0 ? _poolFee : DEFAULT_POOL_FEE;
 
-        _sellPortfolio(tokenOut, _tokenId, transactionTimeout, poolFee);
-        emit PortfolioSold(_tokenId, msg.sender);
+        _sellPortfolio(_tokenOut, _tokenId, transactionTimeout, poolFee);
     }
 
     function setPortfolioManager(address _portfolioManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (address(portfolioManager) != address(0)) revert PortfolioManagerAlreadySet();
-        portfolioManager = PortfolioManager(_portfolioManager);
-        emit PortfolioManagerSet(_portfolioManager);
-    }
-    
-    function getPurchasedPortfolio(uint256 _tokenId) public view returns (PurchasedPortfolio memory) {
-        return purchasedPortfolios[_tokenId];
-    }
+        if (_portfolioManager == address(0)) revert PortfolioManagerIsZeroAddrress();
+        if (_portfolioManager == address(portfolioManager)) revert ValueUnchanged();
 
-    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
-        return purchasedPortfolios[_tokenId].purchasedTokens.length;
+        portfolioManager = PortfolioManager(_portfolioManager);
+        emit PortfolioManagerUpdated(_portfolioManager);
     }
 
     function updateSecondsAgo(uint32 _newSecondsAgo) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (1 minutes > _newSecondsAgo) revert SecondsAgoTooSmall();
         if (secondsAgo == _newSecondsAgo) revert ValueUnchanged();
 
         secondsAgo = _newSecondsAgo;
@@ -148,24 +142,32 @@ contract BiscuitV1 is ERC721, AccessControl {
         emit ServiceFeeUpdated(_newServiceFee);
     }
 
-    function withdrawTokens(address _token, address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function withdrawTokens(address _token, address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         IERC20(_token).safeTransfer(_receiver, _amount);
     }
 
     function withdrawAllTokens() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 balance = TOKEN.balanceOf(address(this));
-        TOKEN.safeTransfer(msg.sender, balance);
+        uint256 balance = PURCHASE_TOKEN.balanceOf(address(this));
+        PURCHASE_TOKEN.safeTransfer(msg.sender, balance);
     }
 
-    function withdrawETH(address _receiver, uint256 _amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function withdrawETH(address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         (bool success, ) = _receiver.call{value: _amount}(new bytes(0));
         if (!success) revert WithdrawFailed();
     }
 
-    function withdrawAllETH() public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function withdrawAllETH() external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 balance = address(this).balance;
         (bool success, ) = msg.sender.call{value: balance}(new bytes(0));
         if (!success) revert WithdrawFailed();
+    }
+
+    function getPurchasedPortfolio(uint256 _tokenId) public view returns (PurchasedPortfolio memory) {
+        return purchasedPortfolios[_tokenId];
+    }
+
+    function getPurchasedPortfolioTokenCount(uint256 _tokenId) public view returns (uint256) {
+        return purchasedPortfolios[_tokenId].purchasedTokens.length;
     }
 
     function _buyPortfolio(
@@ -177,7 +179,7 @@ contract BiscuitV1 is ERC721, AccessControl {
     ) private {
         // In _amountPayment can be amoumt ether or token
         // Invested amount token or ETH that including service fee
-        uint256 investedAmount = _amountPayment * (BIPS - serviceFee) / BIPS;
+        uint256 investedAmount = _amountPayment * (MAX_BIPS - serviceFee) / MAX_BIPS;
         PortfolioManager.TokenShare[] memory portfolioTokens = portfolioManager.getPortfolio(_portfolioId).tokens;
         PurchasedToken[] memory purchasedTokens = new PurchasedToken[](portfolioTokens.length);
 
@@ -193,7 +195,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         for (uint256 i = 0; i < portfolioTokens.length; i++) {
             PortfolioManager.TokenShare memory portfolioToken = portfolioTokens[i];
 
-            uint256 tokenAmount = (investedAmount * portfolioToken.share) / BIPS;
+            uint256 tokenAmount = (investedAmount * portfolioToken.share) / MAX_BIPS;
             uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, _poolFee);
 
             purchasedTokens[i] = PurchasedToken({
@@ -202,9 +204,10 @@ contract BiscuitV1 is ERC721, AccessControl {
             });
         }
 
-        tokenId++;
-        _addPurchasedPortfolio(tokenId, _tokenIn, purchasedTokens);
-        _mint(msg.sender, tokenId);
+        nextTokenId++;
+        _addPurchasedPortfolio(nextTokenId, _tokenIn, purchasedTokens);
+        _mint(msg.sender, nextTokenId);
+        emit PortfolioPurchased(_portfolioId, msg.sender, _amountPayment, msg.value);
     }
 
     function _sellPortfolio(
@@ -237,6 +240,7 @@ contract BiscuitV1 is ERC721, AccessControl {
         
         delete purchasedPortfolios[_tokenId];
         _burn(_tokenId);
+        emit PortfolioSold(_tokenId, msg.sender);
     }
 
 

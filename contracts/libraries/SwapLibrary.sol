@@ -16,13 +16,13 @@ library SwapLibrary {
         uint256 _amountIn,
         uint24 _poolFee
     ) external returns (uint256 amountOut) {
-        uint256 amountOutMinimum = _getExpectedMinAmountToken(
-            _biscuit,
-            _tokenIn,
-            _tokenOut,
-            _amountIn,
-            _poolFee
-        );
+        // uint256 amountOutMinimum = _getExpectedMinAmountToken(
+        //     _biscuit,
+        //     _tokenIn,
+        //     _tokenOut,
+        //     _amountIn,
+        //     _poolFee
+        // );
 
         IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
             .ExactInputSingleParams({
@@ -31,7 +31,7 @@ library SwapLibrary {
                 fee: _poolFee,
                 recipient: address(this),
                 amountIn: _amountIn,
-                amountOutMinimum: amountOutMinimum,
+                amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             });
 
@@ -48,7 +48,7 @@ library SwapLibrary {
     ) private view returns (uint256 amountOutMinimum) {
         IUniswapV3Factory uniswapFactory = _biscuit.UNISWAP_FACTORY();
         uint256 SLIPPAGE_MULTIPLIER = _biscuit.SLIPPAGE_MULTIPLIER();
-        uint256 BIPS = _biscuit.BIPS();
+        uint256 MAX_BIPS = _biscuit.MAX_BIPS();
         uint256 _serviceFee = _biscuit.serviceFee();
         uint32 secondsAgo = _biscuit.secondsAgo();
 
@@ -67,6 +67,6 @@ library SwapLibrary {
             _quoteToken
         );
 
-        amountOutMinimum = (amountOut * (SLIPPAGE_MULTIPLIER - _serviceFee)) / BIPS;
+        amountOutMinimum = (amountOut * (SLIPPAGE_MULTIPLIER - _serviceFee)) / MAX_BIPS;
     }
 }
