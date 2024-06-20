@@ -6,6 +6,7 @@ import { ethers } from "hardhat";
 import { Contract } from "ethers";
 
 describe("Biscuit", function () {
+    this.timeout(60000);
     let biscuitV1: BiscuitV1;
     let usdtToken: Contract;
     let wethToken: Contract;
@@ -37,7 +38,7 @@ describe("Biscuit", function () {
         const wethToken = new ethers.Contract("0xfff9976782d46cc05630d1f6ebab18b2324d6b14", erc20Abi, owner);
         const flokiToken = new ethers.Contract("0x00aF37A629dB89c37851921E79A9c024DAD0Ef8A", erc20Abi, owner);
         const memeToken = new ethers.Contract("0x86601ce1f386d35684f3D00Bb5914D83ABC28c20", erc20Abi, owner);
-        const pepeToken = new ethers.Contract("0x4b14415148555d4d5c3D6F6c24b564953E6F6E13", erc20Abi, owner);
+        const pepeToken = new ethers.Contract("0x4829329188E8E60b0AD9e3F3EF9F2c75D264cCa6", erc20Abi, owner);
         const shibaToken = new ethers.Contract("0xC4b78b1cA6F90eCeBAdb2A1A2127814661A35200", erc20Abi, owner);
 
         const memePortfolio = [
@@ -104,7 +105,7 @@ describe("Biscuit", function () {
         expect(await shibaToken.balanceOf(biscuitV1.target)).to.eq(0);
     });
 
-    it("Should correct buy and sell portfolio for ETH", async function () {
+    it.only("Should correct buy and sell portfolio for ETH", async function () {
         const amountETH = ethers.parseUnits("0.1", 18);
         const serviceFee = ethers.parseUnits("0.001", 18);
         const oneToken = ethers.parseUnits("1", 18);

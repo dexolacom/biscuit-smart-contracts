@@ -14,29 +14,57 @@ library SwapLibrary {
         address _tokenIn,
         address _tokenOut,
         uint256 _amountIn,
+        uint256 _transactionTimeout,
         uint24 _poolFee
     ) external returns (uint256 amountOut) {
-        // uint256 amountOutMinimum = _getExpectedMinAmountToken(
-        //     _biscuit,
-        //     _tokenIn,
-        //     _tokenOut,
-        //     _amountIn,
-        //     _poolFee
-        // );
+        IUniswapV3Factory uniswapFactory = _biscuit.UNISWAP_FACTORY();
+        address pool = uniswapFactory.getPool(_tokenIn, _tokenOut, _poolFee);
 
-        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
-            .ExactInputSingleParams({
-                tokenIn: _tokenIn,
-                tokenOut: _tokenOut,
-                fee: _poolFee,
-                recipient: address(this),
-                amountIn: _amountIn,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            });
+        if (pool != address(0)) {
+            // uint256 amountOutMinimum = _getExpectedMinAmountToken(
+            //     _biscuit,
+            //     _tokenIn,
+            //     _tokenOut,
+            //     _amountIn,
+            //     _poolFee
+            // );
 
-        IV3SwapRouter swapRouter = _biscuit.SWAP_ROUTER();
-        amountOut = swapRouter.exactInputSingle(params);
+            IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
+                .ExactInputSingleParams({
+                    tokenIn: _tokenIn,
+                    tokenOut: _tokenOut,
+                    fee: _poolFee,
+                    recipient: address(_biscuit),
+                    amountIn: _amountIn,
+                    amountOutMinimum: 0,
+                    sqrtPriceLimitX96: 0
+                });
+
+            IV3SwapRouter swapRouter = _biscuit.SWAP_ROUTER();
+            amountOut = swapRouter.exactInputSingle(params);
+        } else {
+            address purchaseToken = address(_biscuit.PURCHASE_TOKEN());
+            bytes memory path = abi.encodePacked(_tokenIn, _poolFee, purchaseToken, _poolFee, _tokenOut);
+
+            // uint256 amountOutMinimum = _getExpectedMinAmountToken(
+            //     _biscuit,
+            //     purchaseToken,
+            //     _tokenOut,
+            //     _amountIn,
+            //     _poolFee
+            // );
+
+            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
+                .ExactInputParams({
+                    path: path,
+                    recipient: address(_biscuit),
+                    amountIn: _amountIn,
+                    amountOutMinimum: 0
+                });
+
+            IV3SwapRouter swapRouter = _biscuit.SWAP_ROUTER();
+            amountOut = swapRouter.exactInput(params);
+        }
     }
 
     function _getExpectedMinAmountToken(
@@ -52,7 +80,7 @@ library SwapLibrary {
         uint256 _serviceFee = _biscuit.serviceFee();
         uint32 secondsAgo = _biscuit.secondsAgo();
 
-        address pool = IUniswapV3Factory(uniswapFactory).getPool(
+        address pool = uniswapFactory.getPool(
             _baseToken,
             _quoteToken,
             _poolFee

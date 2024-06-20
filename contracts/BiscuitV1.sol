@@ -76,11 +76,15 @@ contract BiscuitV1 is ERC721, AccessControl {
         _checkIsContract(_uniswapFactory);
         _checkIsContract(_swapRouter);
         _checkIsContract(_purchaseToken);
+        _checkIsContract(_weth);
 
         UNISWAP_FACTORY = IUniswapV3Factory(_uniswapFactory);
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         PURCHASE_TOKEN = IERC20(_purchaseToken);
         WETH = IWETH(_weth);
+        
+        address pool = UNISWAP_FACTORY.getPool(_purchaseToken, _weth, DEFAULT_POOL_FEE);
+        if (pool == address(0)) revert PoolDoesNotExist();
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
@@ -120,7 +124,7 @@ contract BiscuitV1 is ERC721, AccessControl {
             PurchasedToken memory purchasedToken = purchasedPortfolio.purchasedTokens[i];
 
             IERC20(purchasedToken.token).approve(address(SWAP_ROUTER), purchasedToken.amount);
-            uint256 amountOut = SwapLibrary.swap(BiscuitV1(this), purchasedToken.token, _tokenOut, purchasedToken.amount, poolFee);
+            uint256 amountOut = SwapLibrary.swap(BiscuitV1(this), purchasedToken.token, _tokenOut, purchasedToken.amount, transactionTimeout, poolFee);
 
             totalAmountOut += amountOut;
         }
@@ -239,7 +243,7 @@ contract BiscuitV1 is ERC721, AccessControl {
             PortfolioManager.TokenShare memory portfolioToken = portfolioTokens[i];
 
             uint256 tokenAmount = (_investedAmount * portfolioToken.share) / MAX_BIPS;
-            uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, poolFee);
+            uint256 amountOutToken = SwapLibrary.swap(BiscuitV1(this), _tokenIn, portfolioToken.token, tokenAmount, transactionTimeout, poolFee);
 
             purchasedTokens[i] = PurchasedToken({
                 token: portfolioToken.token,
