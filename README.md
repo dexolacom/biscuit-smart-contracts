@@ -1,3 +1,60 @@
+# Biscuit Contracts
+
+## BiscuitV1
+
+## Overview
+
+The BiscuitV1 contract enables the buying and selling of digital portfolios using blockchain technology and NFTs. It uses the Uniswap V3 protocol for asset swaps and handles transactions using specific tokens or ETH. Each portfolio purchase results in the minting of an NFT, which identifies ownership and can be transferred to others, so transferring the ownership of the portfolio.
+
+The PortfolioManager contract, as an extension of BiscuitV1, allows for the creation and management of these portfolios, ensuring their composition and enabling/disabling them as necessary.
+
+### Portfolio Purchase Process
+
+To purchase a portfolio, a specific token that uses a contract or ETH can be used. The buyer specifies the portfolio ID which wants to buy, the amount to spend, and optional transaction settings like timeout and fees. The service fee is deducted from the total invested amount. After successful purchase, a Non-Fungible Token (NFT) is minted, identifies ownership of the portfolio. This NFT serves as a digital certificate of ownership for the specified portfolio. The purchased portfolio can be tracked by token (NFT) ID.
+
+### Portfolio Sale Process
+
+To sell a previously purchased portfolio, this requires NFT ownership. The seller specifies the token to receive in exchange it can be ETH or a token that uses a contract (usually a stablecoin), the NFT's ID, and optional transaction settings. The system then performs the necessary swaps to convert the portfolio assets into the selected token. Once the process is complete, the NFT is burned, and the seller receives the token total amount from the sale.
+
+### Portfolio Manager
+
+The PortfolioManager contract allows authorized users to create, update, and manage portfolios. It includes functions to add, remove, enable, and disable portfolios, ensuring they comply with the rules.
+
+### How to Buy and Sell Portfolio?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Biscuit NFT
 
 ## Overview
@@ -30,3 +87,4 @@ Burning an NFT ensures destroying an existing token. Similar to the minting proc
 
     - The token owner or an approved operator can update the actions to be executed when a token is burned.
     - This allows for flexibility in defining what happens when a token is burned.
+
