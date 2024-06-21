@@ -5,7 +5,7 @@ import {INonfungiblePositionManager} from '@uniswap/v3-periphery/contracts/inter
 import {IV3SwapRouter} from "@uniswap/swap-router-contracts/contracts/interfaces/IV3SwapRouter.sol";
 
 contract SignatureHelper {    
-    function generateSwapSignature(
+    function getSwapSignature(
         address tokenIn,
         address tokenOut,
         uint24 fee,
@@ -28,7 +28,7 @@ contract SignatureHelper {
         callData = abi.encode(params);
     }
 
-    function generateMultiSwapSignature(
+    function getMultiSwapSignature(
         bytes memory path,
         address recipient,
         uint256 amountIn,
@@ -45,8 +45,7 @@ contract SignatureHelper {
         callData = abi.encode(params);
     }
 
-
-    function generateAddLiquiditySignature(
+    function getAddLiquiditySignature(
         uint256 tokenId,
         uint128 liquidity,
         uint256 amount0Min,
@@ -65,7 +64,7 @@ contract SignatureHelper {
         callData = abi.encode(params);
     }
 
-    function generateRemoveLiquiditySignature(
+    function getRemoveLiquiditySignature(
         uint256 tokenId,
         uint128 liquidity,
         uint256 amount0Min,
@@ -84,7 +83,7 @@ contract SignatureHelper {
         callData = abi.encode(params);
     }
 
-    function generateApproveSignature(
+    function getApproveSignature(
         address spender,
         uint256 amount
     ) external pure returns (string memory signature, bytes memory callData) {
@@ -92,7 +91,7 @@ contract SignatureHelper {
         callData = abi.encode(spender, amount);
     }
 
-    function generateTransferFromSignature(
+    function getTransferFromSignature(
         address from,
         address to,
         uint256 amount
