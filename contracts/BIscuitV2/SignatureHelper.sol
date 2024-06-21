@@ -65,7 +65,8 @@ contract SignatureHelper {
 
     /// @notice Generates the signature and calldata for adding liquidity to a position.
     /// @param tokenId The ID of the token representing the position.
-    /// @param liquidity The amount of liquidity to add.
+    /// @param amount0Desired The desired amount of token0 to be spent.
+    /// @param amount1Desired The desired amount of token0 to be spent.
     /// @param amount0Min The minimum amount of token0.
     /// @param amount1Min The minimum amount of token1.
     /// @param deadline The deadline for the transaction.
@@ -73,7 +74,8 @@ contract SignatureHelper {
     /// @return callData The encoded function calldata.
     function getAddLiquiditySignature(
         uint256 tokenId,
-        uint128 liquidity,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
         uint256 amount0Min,
         uint256 amount1Min,
         uint256 deadline
@@ -81,7 +83,8 @@ contract SignatureHelper {
         signature = "increaseLiquidity(uint256,uint128,uint256,uint256,uint256)";
         INonfungiblePositionManager.IncreaseLiquidityParams memory params = INonfungiblePositionManager.IncreaseLiquidityParams({
             tokenId: tokenId,
-            liquidity: liquidity,
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
             amount0Min: amount0Min,
             amount1Min: amount1Min,
             deadline: deadline
