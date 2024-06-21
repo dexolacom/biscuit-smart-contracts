@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "solidity-docgen";
 import 'dotenv/config'
 
 const { ETH_SEPOLIA_TESTNET_URL, ETH_MAINNET_URL, PRIVATE_KEY, ETHERSCAN_API_KEY } = process.env;
@@ -25,7 +26,10 @@ const config: HardhatUserConfig = {
     },
     etherscan: {
         apiKey: ETHERSCAN_API_KEY,
-    }
+    },
+    docgen: {
+        pages: 'files'
+    },
 };
 
 export default config;
