@@ -40,7 +40,15 @@ error NotApprovedOrOwner()
 
 Error indicating that the caller is not approved or the owner.
 
-## Biscuit
+## WithdrawFailed
+
+```solidity
+error WithdrawFailed()
+```
+
+_Thrown when token withdrawal fails._
+
+## BiscuitV2
 
 This contract allows minting and burning of NFTs with custom actions on mint and burn.
 
@@ -119,8 +127,16 @@ Mapping from token ID to burn parameters.
 ### constructor
 
 ```solidity
-constructor() public
+constructor(address _admin) public
 ```
+
+Initializes the contract with a name and a symbol.
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| _admin | address | Address of the contract admin. |
 
 Initializes the contract with a name and a symbol.
 
@@ -188,6 +204,53 @@ _This function checks if the caller is authorized, then updates the burn paramet
 | ------------- | ------------------------- | -------------------------------------------------------------- |
 | \_tokenId     | uint256                   | The ID of the token whose burn parameters are being updated.   |
 | newBurnParams | struct Biscuit.BurnParams | The new burn parameters (see `BurnParams` struct for details). |
+
+### withdrawTokens
+
+```solidity
+function withdrawTokens(address _token, address _receiver, uint256 _amount) external
+```
+
+Withdraw specified amount of tokens to a receiver address.
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| _token | address | The token address to withdraw. |
+| _receiver | address | The receiver address. |
+| _amount | uint256 | The amount to withdraw. |
+
+### withdrawAllTokens
+
+```solidity
+function withdrawAllTokens(address _token) external
+```
+
+Withdraw all tokens to the admin address.
+
+### withdrawETH
+
+```solidity
+function withdrawETH(address _receiver, uint256 _amount) external
+```
+
+Withdraw specified amount of ETH to a receiver address.
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| _receiver | address | The receiver address. |
+| _amount | uint256 | The amount to withdraw. |
+
+### withdrawAllETH
+
+```solidity
+function withdrawAllETH() external
+```
+
+Withdraw all ETH to the admin address.
 
 ## ERC721
 

@@ -48,36 +48,21 @@ For example, we offer a ready-made portfolio called MEME, which portfolio includ
 
 *[PortfolioManager contract](https://sepolia.etherscan.io/address/0x65db7A467E030d25e723F393BFcEb55D77B3f780#writeContract)*.
 
-## Biscuit V2
+
+## BiscuitV2
 
 ### Overview
 
-The Biscuit NFT Contract is designed to be flexible, allowing users to create and destroy NFTs with custom actions.
+The BiscuitV2 NFT Contract is designed to be flexible, allowing users to create and destroy NFTs with custom actions such as staking and swapping during portfolio purchases. The contract can execute any specified actions, making it adaptable to different needs.
 
-### Minting NFTs
+### Portfolio Purchase Process
 
-Minting an NFT ensures creating a new token to a specific address. During this process, the contract can execute a series of actions such as sending ETH or token, staking or swapping, interacting with other smart contracts and etc.. These actions can be configured and specified during mint.
+When purchasing a portfolio, BiscuitV2 allows for additional actions like staking tokens or swapping assets as part of the transaction. This flexibility enables users to customize their portfolio management according to their investment strategies.
 
-### Burning NFTs
+### Portfolio Sale Process
 
-Burning an NFT ensures destroying an existing token. Similar to the minting process, burning a token can also trigger a series of actions, such as sending ETH or token, unstaking or swapping, interacting with other smart contracts and etc.. These actions are specified when the token is created and can be updated later by the owner.
+Selling a portfolio in BiscuitV2 also supports various actions. For instance, users can swap assets or unstake tokens as part of the sale process. The contract executes these actions, providing a seamless and integrated transaction experience.
 
-## How It Works
+### Helper Contract
 
-1. **Minting a Token:**
-
-    - A user specifies the recipient address and a set of actions to be executed during minting.
-    - The contract creates a new token and to the specified address.
-    - The contract executes the specified actions, such as swapping, staking, transfer tokens or calling functions on other contracts.
-
-2. **Burning a Token:**
-
-    - The token owner or an approved user can burn token.
-    - The contract verifies that the caller is authorized to burn the token.
-    - The contract destroys the token and executes the actions associated with burning.
-
-3. **Updating Burn Actions:**
-
-    - The token owner or an approved operator can update the actions to be executed when a token is burned.
-    - This allows for flexibility in defining what happens when a token is burned.
-
+The helper contract in BiscuitV2 assists in generating instructions for the front end. This contract simplifies the user experience by automating the creation of transaction parameters, making it easier for users to interact with the BiscuitV2 contract without needing in-depth technical knowledge.
