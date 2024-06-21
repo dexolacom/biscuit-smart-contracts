@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @notice Error indicating that the provided arrays have mismatched lengths.
 error ArrayMismatch();
@@ -13,11 +16,15 @@ error TooManyOperations();
 error TransactionExecutionReverted();
 /// @notice Error indicating that the caller is not approved or the owner.
 error NotApprovedOrOwner();
+/// @dev Thrown when token withdrawal fails.
+error WithdrawFailed();
 
 /// @title Biscuit NFT Contract
 /// @notice This contract allows minting and burning of NFTs with custom actions on mint and burn.
-/// @dev Inherits from OpenZeppelin's ERC721 implementation.
-contract BiscuitV2 is ERC721 {
+/// @dev Inherits from OpenZeppelin's ERC721 and AccessControl implementation.
+contract BiscuitV2 is ERC721, AccessControl {
+    using SafeERC20 for IERC20;
+
     /// @notice Parameters required for minting a new token.
     /// @param to The address that will receive the minted token.
     /// @param targets The array of target addresses for executing transactions during minting.
@@ -53,11 +60,15 @@ contract BiscuitV2 is ERC721 {
     mapping(uint256 => BurnParams) burnParamsByTokenId;
 
     /// @notice Initializes the contract with a name and a symbol.
-    constructor() ERC721("Biscuit", "BSC") {}
+    /// @param _admin Address of the contract admin.
+    constructor(address _admin) ERC721("Biscuit", "BSC") {
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    }
 
     /// @notice Mints a new token, executes specified actions, and sets up future burn actions.
     /// @notice Actions can include operations such as staking, swapping, or interacting with other contracts.
-    /// @dev This function increments the tokenId, mints a new ERC721 token to the specified address, stores the burn parameters, and executes a series of transactions.
+    /// @dev This function increments the tokenId, mints a new ERC721 token to the specified address, 
+    ///     stores the burn parameters, and executes a series of transactions.
     /// @param mintParams Parameters for minting a new token (see `MintParams` struct for details).
     /// @param burnParams Parameters for burning the token in the future (see `BurnParams` struct for details).
     /// @return data Array of return data from the executed transactions during minting.
@@ -114,6 +125,42 @@ contract BiscuitV2 is ERC721 {
             revert NotApprovedOrOwner();
         }
         burnParamsByTokenId[_tokenId] = newBurnParams;
+    }
+
+        /// @notice Withdraw specified amount of tokens to a receiver address.
+    /// @param _token The token address to withdraw.
+    /// @param _receiver The receiver address.
+    /// @param _amount The amount to withdraw.
+    function withdrawTokens(address _token, address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(_token).safeTransfer(_receiver, _amount);
+    }
+
+    /// @notice Withdraw all tokens to the admin address.
+    function withdrawAllTokens(address _token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).safeTransfer(msg.sender, balance);
+    }
+
+    /// @notice Withdraw specified amount of ETH to a receiver address.
+    /// @param _receiver The receiver address.
+    /// @param _amount The amount to withdraw.
+    function withdrawETH(address _receiver, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        (bool success, ) = _receiver.call{value: _amount}(new bytes(0));
+        if (!success) revert WithdrawFailed();
+    }
+
+    /// @notice Withdraw all ETH to the admin address.
+    function withdrawAllETH() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 balance = address(this).balance;
+        (bool success, ) = msg.sender.call{value: balance}(new bytes(0));
+        if (!success) revert WithdrawFailed();
+    }
+
+    /// @notice Check if the contract supports a given interface.
+    /// @param interfaceId The interface identifier.
+    /// @return True if the contract supports the interface, false otherwise.
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
     /// @notice Executes a series of transactions.
